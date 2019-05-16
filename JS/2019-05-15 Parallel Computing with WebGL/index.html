@@ -1,0 +1,1720 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+    <title>Parallel Computing with WebGL</title>
+
+    <link rel="stylesheet" href="./revealjs/css/reset.css">
+    <link rel="stylesheet" href="./revealjs/css/reveal.css">
+    <link rel="stylesheet" href="./revealjs/css/theme/beige.css">
+    <style>
+      .two-col {
+        height: 100%;
+        display: grid;
+        grid-template-columns: auto auto;
+        grid-template-rows: auto;
+      }
+      .two-row {
+        height: 100%;
+        display: grid;
+        grid-template-columns: auto;
+        grid-template-rows: auto 1fr;
+      }
+
+      .reveal h1,
+      .reveal h2,
+      .reveal h3,
+      .reveal h4,
+      .reveal h5,
+      .reveal h6 {
+        text-transform: none;
+      }
+
+      
+    </style>
+
+    <!-- Theme used for syntax highlighting of code -->
+    <link rel="stylesheet" href="./revealjs/lib/css/zenburn.css">
+
+    <!-- Printing and PDF exports -->
+    <script>
+      var link = document.createElement( 'link' );
+      link.rel = 'stylesheet';
+      link.type = 'text/css';
+      link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+      document.getElementsByTagName( 'head' )[0].appendChild( link );
+    </script>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+
+        <section>
+          <h3>RheinNeckarJS Meetup</h3>
+          <h1>Parallel Computing<br>with WebGL</h1>
+          <p>
+            <small>by Dirk Toewe</small>
+          </p>
+        </section>
+
+        <section>
+          <h2>GPU</h2>
+
+          <ul>
+            <li>Not just computer graphics
+            <li>Allow general-purpose computing
+              <ul>
+                <li>Cryptocurrency Mining
+                <li>Machine/Deep Learning
+                <li>...
+              </ul>
+            <li>OpenCL/Cuda not necessary
+            <li>OpenGL/WebGL is enough
+          </ul>
+        </section>
+
+        <section>
+          <h2>Initialization</h2>
+
+          <pre><code data-trim data-noescape data-line-numbers class="hljs javascript">
+            const canvas = document.createElement('canvas')
+            document.body.appendChild(canvas)
+
+            // screen resolution
+            canvas.width  = 800
+            canvas.height = 800
+            // displayed size
+            canvas.style = 'width: 800px; height 800px;'
+
+            const gl = canvas.getContext("webgl2",{
+              antialias: false
+            })
+          </code></pre>
+        </section>
+
+        <section>
+          <h2>OpenGL Pipeline</h2>
+
+            <svg version="1.2" preserveAspectRatio="xMidYMid" width="90%" height="90%" viewbox="0 -1   4.5 3.375" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <polyline id="arrow" transform="scale(0.45)" points="-0.5,-0.2  -0.5,0.2  0.1,0.2  0.1,0.4  0.5,0  0.1,-0.4  0.1,-0.2 -0.5,-0.2" style="fill:none; stroke-width: 0.02; stroke: black;" />
+              </defs>
+              <use href="#arrow" transform="translate(0.25,0)"/>
+              <use href="#arrow" transform="translate(1.75,0)"/>
+              <use href="#arrow" transform="translate(3.25,0)"/>
+              <image id="svg_gpu_pipeline_img1" href="" x="0.5" y="-0.5" height="1" width="1"/>
+              <image id="svg_gpu_pipeline_img2" href="" x="2.0" y="-0.5" height="1" width="1"/>
+              <image id="svg_gpu_pipeline_img3" href="" x="3.5" y="-0.5" height="1" width="1"/>
+              <text x="0.60" y="-0.6" fill="#2a76dd" font-size="0.2" style="font-family: sans-serif;">Vertices</text>
+              <text x="2.00" y="-0.6" fill="#2a76dd" font-size="0.2" style="font-family: sans-serif;">Geometry</text>
+              <text x="3.45" y="-0.6" fill="#2a76dd" font-size="0.2" style="font-family: sans-serif;">Fragments</text>
+              <g class="fragment" transform="translate(0.05,0.3)" fill="#2a76dd" style="font-family: sans-serif;" font-size="0.09">
+                <g transform="translate(0,0)">
+                  <text x="0" y="0"   >Vertex</text>
+                  <text x="0" y="0.1">Shader</text>
+                </g>
+                <g transform="translate(1.5,0)" fill="dimgray">
+                  <text x="0" y="0"   text-decoration="line-through">Geometry</text>
+                  <text x="0" y="0.1" text-decoration="line-through">Shader</text>
+                </g>
+                <g transform="translate(3,0)">
+                  <text x="0" y="0"  >Fragment</text>
+                  <text x="0" y="0.1">Shader</text>
+                </g>
+              </g>
+            </svg>
+            <script type="text/javascript">
+              'use strict'; (async () => {
+                const svg_img1 = document.getElementById('svg_gpu_pipeline_img1'),
+                      svg_img2 = document.getElementById('svg_gpu_pipeline_img2'),
+                      svg_img3 = document.getElementById('svg_gpu_pipeline_img3')
+                const canvas = document.createElement('canvas')
+                canvas.width = canvas.height = 800;
+                canvas.style = `width: ${canvas.width}px; height ${canvas.height}px; border-style: solid; border-width: 4px; `
+                const {width:W, height:H} = canvas,
+                  ctx = canvas.getContext('2d'),
+                  nodes = [
+                    [0.1,0.1],
+                    [0.15,0.4], [0.75,0.2],
+                    [0.5,0.5], [0.1,0.9], [0.9,0.9]
+                  ].map( ([x,y]) => [x*W, y*H] ),
+                  SIZE = Math.max(W,H) / 64
+                ctx.imageSmoothingEnabled = false;
+                ctx.lineWidth = SIZE;
+                for( const [x,y] of nodes ) {
+                  ctx.beginPath();
+                  ctx.moveTo(x-SIZE*2, y-SIZE*2)
+                  ctx.lineTo(x+SIZE*2, y+SIZE*2)
+                  ctx.moveTo(x-SIZE*2, y+SIZE*2)
+                  ctx.lineTo(x+SIZE*2, y-SIZE*2)
+                  ctx.stroke();
+                }
+                const lw = 8;
+                ctx.lineWidth = lw;
+                ctx.strokeStyle = 'black';
+                ctx.strokeRect(lw/2, lw/2, W-lw, H-lw);
+                svg_img1.setAttribute('href', canvas.toDataURL() );
+                ctx.lineWidth = SIZE;
+                ctx.clearRect(0,0, W,H)
+                ctx.beginPath();
+                ctx.arc(...nodes[0], SIZE*2, 0, Math.PI*2)
+                ctx.fillStyle = 'black';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(...nodes[1])
+                ctx.lineTo(...nodes[2])
+                ctx.strokeStyle = 'black';
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(...nodes[3])
+                ctx.lineTo(...nodes[4])
+                ctx.lineTo(...nodes[5])
+                ctx.closePath();
+                ctx.stroke();
+                ctx.fillStyle = 'darkgray';
+                ctx.fill();
+                ctx.lineWidth = lw;
+                ctx.strokeStyle = 'black';
+                ctx.strokeRect(lw/2, lw/2, W-lw, H-lw);
+                svg_img2.setAttribute('href', canvas.toDataURL() );
+                ctx.lineWidth = SIZE;
+                ctx.clearRect(0,0, W,H)
+                ctx.beginPath();
+                ctx.arc(...nodes[0], SIZE*2, 0, Math.PI*2)
+                ctx.fillStyle = 'red';
+                ctx.fill();
+                ctx.beginPath();
+                ctx.moveTo(...nodes[1])
+                ctx.lineTo(...nodes[2])
+                ctx.strokeStyle = 'blue';
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(...nodes[3])
+                ctx.lineTo(...nodes[4])
+                ctx.lineTo(...nodes[5])
+                ctx.closePath();
+                ctx.fillStyle = 'green';
+                ctx.fill();
+                const grid = W/20,
+                         w = W/grid,
+                         h = H/grid,
+                       img = ctx.getImageData(0,0, W,H),
+                  imgSmall = new ImageData(w,h)
+                for( let i=0; i < h; i++ )
+                for( let j=0; j < w; j++ ) {
+                  const K = (i+1)*grid,
+                        L = (j+1)*grid
+                  let r = 0, g = 0, b = 0, a = 0
+                  for( let k=i*grid; k < K; k++ )
+                  for( let l=j*grid; l < L; l++ )
+                    if( img.data[(W*k+l)*4+3] ) {
+                      r = img.data[(W*k+l)*4+0]
+                      g = img.data[(W*k+l)*4+1]
+                      b = img.data[(W*k+l)*4+2]
+                      a += 1
+                    }
+                  if( a > 0.1*grid*grid ) {
+                    imgSmall.data[(w*i+j)*4+0] = r
+                    imgSmall.data[(w*i+j)*4+1] = g
+                    imgSmall.data[(w*i+j)*4+2] = b
+                    imgSmall.data[(w*i+j)*4+3] = 255
+                  }
+                }
+                ctx.clearRect(0,0, W,H)
+                ctx.drawImage(await createImageBitmap(imgSmall), 0,0, W,H)
+                ctx.lineWidth = 2
+                ctx.strokeStyle = 'black';
+                for( let x=grid; x < W; x += grid ) {
+                  ctx.beginPath();
+                  ctx.moveTo(x,0)
+                  ctx.lineTo(x,H)
+                  ctx.stroke();
+                }
+                for( let y=grid; y < H; y += grid ) {
+                  ctx.beginPath();
+                  ctx.moveTo(0,y)
+                  ctx.lineTo(W,y)
+                  ctx.stroke();
+                }
+                ctx.lineWidth = lw;
+                ctx.strokeStyle = 'black';
+                ctx.strokeRect(lw/2, lw/2, W-lw, H-lw);
+                svg_img3.setAttribute('href', canvas.toDataURL() );
+              })()
+            </script>
+        </section>
+
+        <section>
+          <h2>Compile &amp; Link Shaders</h2>
+
+          <div class="two-col" style="font-size: 0.65em; grid-template-columns: 45% 1fr;">
+
+            <div>
+              <pre><code data-trim data-noescape data-line-numbers class="shader-sample-vert hljs javascript">
+                function compileShader(codeString,type) {
+                  const shader = gl.createShader(type);
+                  gl.shaderSource(shader, codeString);
+                  gl.compileShader(shader);
+
+                  console.info( gl.getShaderInfoLog(shader) );
+
+                  const compiled = gl.getShaderParameter(
+                    shader, gl.COMPILE_STATUS
+                  );
+                  if( ! compiled )
+                    throw new Error('Could not compile shader.');
+
+                  return shader;
+                }
+              </code></pre>
+            </div>
+
+            <div>
+              <pre><code data-trim data-noescape data-line-numbers class="shader-sample-vert hljs javascript">
+                const vertShader = <mark>compileShader</mark>(vertCode, gl.  VERTEX_SHADER),
+                      fragShader = <mark>compileShader</mark>(fragCode, gl.FRAGMENT_SHADER),
+                      program = gl.createProgram();
+                gl.attachShader(program, vertShader);
+                gl.attachShader(program, fragShader);
+                gl.linkProgram(program);
+
+                console.info( gl.getProgramInfoLog(program) );
+
+                const linked = gl.getProgramParameter(program, gl.LINK_STATUS);
+                if( ! linked )
+                  throw new Error('Could not link program.');
+
+                gl.useProgram(program);
+              </code></pre>
+            </div>
+
+          </div>
+        </section>
+
+        <section>
+          <h2>Shader I/O</h2>
+
+          <svg version="1.2" preserveAspectRatio="xMidYMid" width="50%" viewbox="-3 -1 96 64" xmlns="http://www.w3.org/2000/svg">
+            <g font-size="4" style="font-family:sans-serif;">
+
+              <g transform="translate(0,4)">
+                <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                <text x="10" y="4.5">Array Buffers</text>
+              </g>
+
+              <g transform="translate(60,22)">
+                <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                <text x="3" y="4.5">Uniforms</text>
+              </g>
+
+              <g transform="translate(60,34)">
+                <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                <text x="3" y="4.5">Textures</text>
+              </g>
+
+              <g style="fill:none; stroke-width:0.2;stroke:black;">
+                <line x1= "60.1" y1="24" x2="48" y2="19"/>
+                <line x1= "60.1" y1="26" x2="48" y2="43"/>
+                <line x1= "60.1" y1="36" x2="48" y2="19"/>
+                <line x1= "60.1" y1="38" x2="48" y2="43"/>
+              </g>
+
+              <g>
+                <g id="vline">
+                  <line  x1="4"  y1="10" x2="4"  y2="16" style="fill:none; stroke-width:0.2;stroke:black;"/>
+                  <polyline  points="4,16 3.25,14.5 4.75,14.5" style="fill:black; stroke:none;"/>
+                </g>
+                <use href="#vline" transform="translate( 8,0)"/>
+                <use href="#vline" transform="translate(16,0)"/>
+                <use href="#vline" transform="translate(24,0)"/>
+                <use href="#vline" transform="translate(32,0)"/>
+                <use href="#vline" transform="translate(40,0)"/>
+              </g>
+
+              <g class="fragment">
+                <g transform="translate(0,4)">
+                  <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffcccc; stroke-width:0.2;stroke:red;"/>
+                  <text x="10" y="4.5" style="fill:red;">Array Buffers</text>
+                </g>
+                <g id="vline2">
+                  <line  x1="4"  y1="10" x2="4"  y2="16" style="fill:red; stroke-width:0.2;stroke:red;"/>
+                  <polyline  points="4,16 3.25,14.5 4.75,14.5" style="fill:red; stroke:none;"/>
+                </g>
+                <use href="#vline2" transform="translate( 8,0)"/>
+                <use href="#vline2" transform="translate(16,0)"/>
+                <use href="#vline2" transform="translate(24,0)"/>
+                <use href="#vline2" transform="translate(32,0)"/>
+                <use href="#vline2" transform="translate(40,0)"/>
+              </g>
+
+              <g transform="translate(0,16)">
+                <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                <text x="12" y="4.5">Vertex Shader</text>
+              </g>
+
+              <g style="fill:none; stroke-width:0.2;stroke:black;">
+                <g>
+                  <line x1= "4" y1="22" x2="10" y2="28"/>
+                  <line x1="12" y1="22" x2="12" y2="28"/>
+                  <line x1="20" y1="22" x2="14" y2="28"/>
+                </g>
+              
+                <g>
+                  <line x1="28" y1="22" x2="28" y2="28"/>
+                </g>
+              
+                <g>
+                  <line x1="36" y1="22" x2="39.5" y2="28"/>
+                  <line x1="44" y1="22" x2="40.5" y2="28"/>
+                </g>
+              
+                <g transform="translate(9,28)">
+                  <rect x="0" y="0" width="6" height="6"/>
+                  <polyline points="1,1 5,2 3,5 1,1" style="fill:lightgray;"/>
+                </g>
+              
+                <g transform="translate(25,28)">
+                  <rect x="0" y="0" width="6" height="6"/>
+                  <circle cx="3" cy="3" r="1.5" style="fill:lightgray;"/>
+                </g>
+              
+                <g transform="translate(37,28)">
+                  <rect x="0" y="0" width="6" height="6"/>
+                  <line x1="1" y1="4.5" x2= "5" y2="2" style="stroke-width:0.3"/>
+                </g>
+              
+                <g>
+                  <line x1="10" y1="34" x2= "4" y2="40"/>
+                  <line x1="11" y1="34" x2= "8" y2="40"/>
+                  <line x1="12" y1="34" x2="12" y2="40"/>
+                  <line x1="13" y1="34" x2="16" y2="40"/>
+                  <line x1="14" y1="34" x2="20" y2="40"/>
+              
+                  <line x1="28" y1="34" x2="24" y2="40"/>
+                  <line x1="28" y1="34" x2="28" y2="40"/>
+                  <line x1="28" y1="34" x2="32" y2="40"/>
+              
+                  <line x1="39.5"  y1="34" x2="36"    y2="40"/>
+                  <line x1="39.83" y1="34" x2="38.67" y2="40"/>
+                  <line x1="40.17" y1="34" x2="41.33" y2="40"/>
+                  <line x1="40.5"  y1="34" x2="44"    y2="40"/>
+                </g>
+              </g>
+
+              <g transform="translate(0,40)">
+                <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                <text x="6" y="4.5">Fragment Shader</text>
+              </g>
+
+              <g style="fill:none; stroke-width:0.2;stroke:black;">
+                <line x1= "4"    y1="46" x2= "4"    y2="52"/>
+                <line x1= "8"    y1="46" x2= "8"    y2="52"/>
+                <line x1="12"    y1="46" x2="12"    y2="52"/>
+                <line x1="16"    y1="46" x2="16"    y2="52"/>
+                <line x1="20"    y1="46" x2="20"    y2="52"/>
+
+                <line x1="24"    y1="46" x2="24"    y2="52"/>
+                <line x1="28"    y1="46" x2="28"    y2="52"/>
+                <line x1="32"    y1="46" x2="32"    y2="52"/>
+
+                <line x1="36"    y1="46" x2="36"    y2="52"/>
+                <line x1="38.67" y1="46" x2="38.67" y2="52"/>
+                <line x1="41.33" y1="46" x2="41.33" y2="52"/>
+                <line x1="44"    y1="46" x2="44"    y2="52"/>
+              </g>
+
+              <g transform="translate(0,52)">
+                <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                <text x="4.5" y="4.5">Screen/Framebuffer</text>
+              </g>
+            </g>
+          </svg>
+        </section>
+
+        <section>
+          <h2>Array Buffers</h2>
+
+          <div class="two-col" style="grid-template-columns: 55% 45%;">
+          
+            <div class="two-row">
+              <pre class="shader-sample-js"  ><code id="shader1-js"   data-trim data-noescape data-line-numbers class="hljs glsl">
+                const buf_xy = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, buf_xy);
+                gl.bufferData(gl.ARRAY_BUFFER,
+                  Float32Array.of(
+                    -1,-1,  +1,-1,  -1,+1, // ◣
+                    +1,+1,   0,+1,   0, 0  // ◤
+                  ),
+                  gl.STATIC_DRAW, 0,0
+                );
+              </code></pre>
+              <ul>
+                <li>Feed per-vertex data <br><small>(Coordinates, Color, Normal Vector, ...)</small>
+              </ul>
+            </div>
+
+            <div>
+              <svg version="1.2" preserveAspectRatio="xMidYMid" style="width: 100%;" viewbox="-2.5 -1.5 5 3" xmlns="http://www.w3.org/2000/svg">
+                <image id="arraybuffer-result" href="./img/shader1.png" x="-1" y="-1" height="2" width="2"/>
+                <g font-size="0.3" font-weight="bold" style="font-family: sans-serif;">
+                  <text x="-2.2" y="1.2">(-1,-1)</text>
+                  <text x= "1.1" y="1.2">(+1,-1)</text>
+                  <text x="-2.2" y="-1.1">(-1,-1)</text>
+                </g>
+              </svg>
+            </div>
+
+          </div>
+        </section>
+
+        <section>
+          <h2>Shader 1: Array Buffers</h2>
+
+          <div class="two-col" style="grid-template-columns: 40% 60%; font-size: 0.8em;">
+
+            <div class="two-row">
+              <pre class="shader-sample-vert"><code id="shader1-vert" data-trim data-noescape data-line-numbers class="hljs glsl">
+                #version 300 es
+                precision highp float;
+                precision highp int;
+                // VERTEX_SHADER
+                in vec2 <mark>in_xy</mark>;
+
+                void main() {
+                  gl_Position = vec4(in_xy,0,1);
+                }
+              </code></pre>
+              <pre class="shader-sample-frag"><code id="shader1-frag" data-trim data-noescape data-line-numbers class="hljs glsl">
+                #version 300 es
+                precision highp float;
+                precision highp int;
+                // FRAGMENT_SHADER
+                out vec4 out_color;
+
+                void main() {
+                  vec4 blue = vec4(0,0,1, 1);
+                  out_color = blue;
+                }
+              </code></pre>
+            </div>
+
+            <div class="two-row">
+
+              <pre class="fragment shader-sample-js"><code id="shader1-js"   data-trim data-noescape data-line-numbers class="hljs glsl">
+                const loc_xy = gl.getAttribLocation(program, <mark>'in_xy'</mark>);
+                gl.enableVertexAttribArray(loc_xy);
+
+                gl.bindBuffer(gl.ARRAY_BUFFER, <mark>buf_xy</mark>);
+                gl.vertexAttribPointer(loc_xy, 2, gl.FLOAT, false, 2*4,0);
+                gl.drawArrays(gl.TRIANGLES, 0,6);
+              </code></pre>
+
+              <svg version="1.2" preserveAspectRatio="xMidYMax" style="width: 70%;" viewbox="-2.5 -1.5 5 3" xmlns="http://www.w3.org/2000/svg">
+                <image id="shader1-result" href="./img/shader1.png" x="-1" y="-1" height="2" width="2"/>
+                <g font-size="0.3" font-weight="bold" style="font-family: sans-serif;">
+                  <text x="-2.2" y="1.2">(-1,-1)</text>
+                  <text x= "1.1" y="1.2">(+1,-1)</text>
+                  <text x="-2.2" y="-1.1">(-1,-1)</text>
+                </g>
+              </svg>
+
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Vertex-to-Fragment Communication</h2>
+
+          <svg version="1.2" preserveAspectRatio="xMidYMid" width="50%" viewbox="-3 -1 96 64" xmlns="http://www.w3.org/2000/svg">
+            <g font-size="4" style="font-family:sans-serif;">
+
+              <g transform="translate(0,4)">
+                <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                <text x="10" y="4.5">Array Buffers</text>
+              </g>
+
+              <g transform="translate(60,22)">
+                <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                <text x="3" y="4.5">Uniforms</text>
+              </g>
+
+              <g transform="translate(60,34)">
+                <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                <text x="3" y="4.5">Textures</text>
+              </g>
+
+              <g style="fill:none; stroke-width:0.2;stroke:black;">
+                <line x1= "60.1" y1="24" x2="48" y2="19"/>
+                <line x1= "60.1" y1="26" x2="48" y2="43"/>
+                <line x1= "60.1" y1="36" x2="48" y2="19"/>
+                <line x1= "60.1" y1="38" x2="48" y2="43"/>
+              </g>
+
+              <g>
+                <g id="vline">
+                  <line  x1="4"  y1="10" x2="4"  y2="16" style="fill:none; stroke-width:0.2;stroke:black;"/>
+                  <polyline  points="4,16 3.25,14.5 4.75,14.5" style="fill:black; stroke:none;"/>
+                </g>
+                <use href="#vline" transform="translate( 8,0)"/>
+                <use href="#vline" transform="translate(16,0)"/>
+                <use href="#vline" transform="translate(24,0)"/>
+                <use href="#vline" transform="translate(32,0)"/>
+                <use href="#vline" transform="translate(40,0)"/>
+              </g>
+
+              <g transform="translate(0,16)">
+                <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                <text x="12" y="4.5">Vertex Shader</text>
+              </g>
+
+              <g style="fill:#ffcccc; stroke-width:0.2;stroke:red;">
+                <g>
+                  <line x1= "4" y1="22" x2="10" y2="28"/>
+                  <line x1="12" y1="22" x2="12" y2="28"/>
+                  <line x1="20" y1="22" x2="14" y2="28"/>
+                </g>
+              
+                <g>
+                  <line x1="28" y1="22" x2="28" y2="28"/>
+                </g>
+              
+                <g>
+                  <line x1="36" y1="22" x2="39.5" y2="28"/>
+                  <line x1="44" y1="22" x2="40.5" y2="28"/>
+                </g>
+              
+                <g transform="translate(9,28)">
+                  <rect x="0" y="0" width="6" height="6"/>
+                  <polyline points="1,1 5,2 3,5 1,1"/>
+                </g>
+              
+                <g transform="translate(25,28)">
+                  <rect x="0" y="0" width="6" height="6"/>
+                  <circle cx="3" cy="3" r="1.5"/>
+                </g>
+              
+                <g transform="translate(37,28)">
+                  <rect x="0" y="0" width="6" height="6"/>
+                  <line x1="1" y1="4.5" x2= "5" y2="2" style="stroke-width:0.3"/>
+                </g>
+              
+                <g>
+                  <line x1="10" y1="34" x2= "4" y2="40"/>
+                  <line x1="11" y1="34" x2= "8" y2="40"/>
+                  <line x1="12" y1="34" x2="12" y2="40"/>
+                  <line x1="13" y1="34" x2="16" y2="40"/>
+                  <line x1="14" y1="34" x2="20" y2="40"/>
+              
+                  <line x1="28" y1="34" x2="24" y2="40"/>
+                  <line x1="28" y1="34" x2="28" y2="40"/>
+                  <line x1="28" y1="34" x2="32" y2="40"/>
+              
+                  <line x1="39.5"  y1="34" x2="36"    y2="40"/>
+                  <line x1="39.83" y1="34" x2="38.67" y2="40"/>
+                  <line x1="40.17" y1="34" x2="41.33" y2="40"/>
+                  <line x1="40.5"  y1="34" x2="44"    y2="40"/>
+                </g>
+              </g>
+
+              <g transform="translate(0,40)">
+                <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                <text x="6" y="4.5">Fragment Shader</text>
+              </g>
+
+              <g style="fill:none; stroke-width:0.2;stroke:black;">
+                <line x1= "4"    y1="46" x2= "4"    y2="52"/>
+                <line x1= "8"    y1="46" x2= "8"    y2="52"/>
+                <line x1="12"    y1="46" x2="12"    y2="52"/>
+                <line x1="16"    y1="46" x2="16"    y2="52"/>
+                <line x1="20"    y1="46" x2="20"    y2="52"/>
+
+                <line x1="24"    y1="46" x2="24"    y2="52"/>
+                <line x1="28"    y1="46" x2="28"    y2="52"/>
+                <line x1="32"    y1="46" x2="32"    y2="52"/>
+
+                <line x1="36"    y1="46" x2="36"    y2="52"/>
+                <line x1="38.67" y1="46" x2="38.67" y2="52"/>
+                <line x1="41.33" y1="46" x2="41.33" y2="52"/>
+                <line x1="44"    y1="46" x2="44"    y2="52"/>
+              </g>
+
+              <g transform="translate(0,52)">
+                <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                <text x="4.5" y="4.5">Screen/Framebuffer</text>
+              </g>
+            </g>
+          </svg>
+        </section>
+
+        <section>
+          <h2>Shader 2: Vertex-to-Fragment</h2>
+
+          <div class="two-col" style="grid-template-columns: 45% 1fr; font-size: 0.8em;">
+
+            <div class="two-row">
+              <pre class="shader-sample-vert"><code id="shader2-vert" data-trim data-noescape data-line-numbers class="hljs glsl">
+                // VERTEX_SHADER
+                in vec2 in_xy;
+
+                out vec2 <mark>ij</mark>;
+
+                void main() {
+                  ij = in_xy*vec2(0.5,-0.5) + 0.5; // [0,1)
+                  gl_Position = vec4(in_xy,0,1);
+                }
+              </code></pre>
+              <pre class="shader-sample-frag"><code id="shader2-frag" data-trim data-noescape data-line-numbers class="hljs glsl">
+                // FRAGMENT_SHADER
+                in vec2 <mark>ij</mark>;
+
+                out vec4 out_color;
+
+                void main() {
+                  out_color = vec4(ij[0], 0, ij[1], 1);
+                }
+              </code></pre>
+            </div>
+
+            <div>
+              <svg class="fragment" version="1.2" preserveAspectRatio="xMidYMid" style="width: 100%;" viewbox="-2 -1.2 4 2.4" xmlns="http://www.w3.org/2000/svg">
+                <image id="shader2-result" href="./img/shader2.png" x="-1" y="-1" height="2" width="2"/>
+                <g font-size="0.1" font-weight="bold" style="font-family: sans-serif;">
+                  <text x="-1.275" y="1.1">(0,1)</text>
+                  <text x= "1.0" y="1.1">(1,1)</text>
+                  <text x= "1.0" y="-1.0">(1,0)</text>
+                  <text x="-1.5" y="-1.0">ij=(0,0)</text>
+                </g>
+              </svg>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Uniforms</h2>
+
+          <div class="two-col" style="grid-template-columns: 50% 1fr; font-size: 0.8em;">
+            <div class="two-row" style="grid-template-rows: 25% 1fr;">
+              <ul>
+                <li>Same value for every vertex/fragment
+              </ul>
+              <table><tbody>
+                <tr>
+                  <th style="border-bottom: none;">float32</th>
+                  <td style="border-bottom: none;">gl.uniform1f(), ...4f</td>
+                </tr>
+                <tr>
+                  <th style="border-bottom: none;">int32</th>
+                  <td style="border-bottom: none;">gl.uniform1i(), ...4i</td>
+                </tr>
+                <tr>
+                  <th style="border-bottom: none;">float32 matrix</th>
+                  <td style="border-bottom: none;">gl.uniform1f(), ...4f</td>
+                </tr>
+                <tr>
+                </tr>
+                <tr>
+                  <th>...</th>
+                  <td></td>
+                </tr>
+              </tbody></table>
+            </div>
+
+            <svg version="1.2" preserveAspectRatio="xMaxYMid" width="80%" viewbox="-3 -1 96 64" xmlns="http://www.w3.org/2000/svg">
+              <g font-size="4" style="font-family:sans-serif;">
+
+                <g transform="translate(0,4)">
+                  <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="10" y="4.5">Array Buffers</text>
+                </g>
+
+                <g transform="translate(60,22)">
+                  <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffcccc; stroke-width:0.2;stroke:red;"/>
+                  <text x="3" y="4.5" style="fill:red;">Uniforms</text>
+                </g>
+
+                <g transform="translate(60,34)">
+                  <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="3" y="4.5">Textures</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <line x1= "60.1" y1="24" x2="48" y2="19" style="stroke:red;"/>
+                  <line x1= "60.1" y1="26" x2="48" y2="43" style="stroke:red;"/>
+                  <line x1= "60.1" y1="36" x2="48" y2="19"/>
+                  <line x1= "60.1" y1="38" x2="48" y2="43"/>
+                </g>
+
+                <g>
+                  <g id="vline">
+                    <line  x1="4"  y1="10" x2="4"  y2="16" style="fill:none; stroke-width:0.2;stroke:black;"/>
+                    <polyline  points="4,16 3.25,14.5 4.75,14.5" style="fill:black; stroke:none;"/>
+                  </g>
+                  <use href="#vline" transform="translate( 8,0)"/>
+                  <use href="#vline" transform="translate(16,0)"/>
+                  <use href="#vline" transform="translate(24,0)"/>
+                  <use href="#vline" transform="translate(32,0)"/>
+                  <use href="#vline" transform="translate(40,0)"/>
+                </g>
+
+                <g transform="translate(0,16)">
+                  <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                  <text x="12" y="4.5">Vertex Shader</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <g>
+                    <line x1= "4" y1="22" x2="10" y2="28"/>
+                    <line x1="12" y1="22" x2="12" y2="28"/>
+                    <line x1="20" y1="22" x2="14" y2="28"/>
+                  </g>
+                
+                  <g>
+                    <line x1="28" y1="22" x2="28" y2="28"/>
+                  </g>
+                
+                  <g>
+                    <line x1="36" y1="22" x2="39.5" y2="28"/>
+                    <line x1="44" y1="22" x2="40.5" y2="28"/>
+                  </g>
+                
+                  <g transform="translate(9,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <polyline points="1,1 5,2 3,5 1,1" style="fill:lightgray;"/>
+                  </g>
+                
+                  <g transform="translate(25,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <circle cx="3" cy="3" r="1.5" style="fill:lightgray;"/>
+                  </g>
+                
+                  <g transform="translate(37,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <line x1="1" y1="4.5" x2= "5" y2="2" style="stroke-width:0.3"/>
+                  </g>
+                
+                  <g>
+                    <line x1="10" y1="34" x2= "4" y2="40"/>
+                    <line x1="11" y1="34" x2= "8" y2="40"/>
+                    <line x1="12" y1="34" x2="12" y2="40"/>
+                    <line x1="13" y1="34" x2="16" y2="40"/>
+                    <line x1="14" y1="34" x2="20" y2="40"/>
+                
+                    <line x1="28" y1="34" x2="24" y2="40"/>
+                    <line x1="28" y1="34" x2="28" y2="40"/>
+                    <line x1="28" y1="34" x2="32" y2="40"/>
+                
+                    <line x1="39.5"  y1="34" x2="36"    y2="40"/>
+                    <line x1="39.83" y1="34" x2="38.67" y2="40"/>
+                    <line x1="40.17" y1="34" x2="41.33" y2="40"/>
+                    <line x1="40.5"  y1="34" x2="44"    y2="40"/>
+                  </g>
+                </g>
+
+                <g transform="translate(0,40)">
+                  <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                  <text x="6" y="4.5">Fragment Shader</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <line x1= "4"    y1="46" x2= "4"    y2="52"/>
+                  <line x1= "8"    y1="46" x2= "8"    y2="52"/>
+                  <line x1="12"    y1="46" x2="12"    y2="52"/>
+                  <line x1="16"    y1="46" x2="16"    y2="52"/>
+                  <line x1="20"    y1="46" x2="20"    y2="52"/>
+
+                  <line x1="24"    y1="46" x2="24"    y2="52"/>
+                  <line x1="28"    y1="46" x2="28"    y2="52"/>
+                  <line x1="32"    y1="46" x2="32"    y2="52"/>
+
+                  <line x1="36"    y1="46" x2="36"    y2="52"/>
+                  <line x1="38.67" y1="46" x2="38.67" y2="52"/>
+                  <line x1="41.33" y1="46" x2="41.33" y2="52"/>
+                  <line x1="44"    y1="46" x2="44"    y2="52"/>
+                </g>
+
+                <g transform="translate(0,52)">
+                  <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="4.5" y="4.5">Screen/Framebuffer</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </section>
+
+        <section>
+          <h2>Shader 3: Uniforms</h2>
+
+          <div class="two-col" style="grid-template-columns: 40% 60%; font-size: 0.8em;">
+
+            <div class="two-row">
+              <pre class="shader-sample-vert"><code id="shader3-vert" data-trim data-noescape data-line-numbers class="hljs glsl">
+                // VERTEX_SHADER
+                in vec2 in_xy;
+
+                uniform vec4 <mark>COLOR</mark>;
+
+                void main() {
+                  gl_Position = vec4(in_xy,0,1);
+                }
+              </code></pre>
+              <pre class="shader-sample-frag"><code id="shader3-frag" data-trim data-noescape data-line-numbers class="hljs glsl">
+                // FRAGMENT_SHADER
+                uniform vec4 <mark>COLOR</mark>;
+
+                out vec4 out_color;
+
+                void main() {
+                  out_color = COLOR;
+                }
+              </code></pre>
+            </div>
+
+            <div class="two-row">
+
+              <pre class="shader-sample-js"><code id="shader3-js"   data-trim data-noescape data-line-numbers class="hljs glsl">
+                const loc_COLOR = gl.getUniformLocation(program, <mark>'COLOR'</mark>);
+                gl.uniform4f(loc_COLOR, /*rgba=*/1,0,0,1)
+
+                gl.drawArrays(gl.TRIANGLES, 0,6);
+              </code></pre>
+
+              <svg version="1.2" preserveAspectRatio="xMidYMax" style="width: 80%;" viewbox="-3 -1.5 6 3" xmlns="http://www.w3.org/2000/svg">
+                <image id="shader3-result" href="./img/shader3.png" x="-1" y="-1" height="2" width="2"/>
+                <g font-size="0.3" font-weight="bold" style="font-family: sans-serif;">
+                  <text x="-2.2" y="1.2">(-1,-1)</text>
+                  <text x= "1.1" y="1.2">(+1,-1)</text>
+                  <text x="-2.2" y="-1.1">(-1,-1)</text>
+                </g>
+              </svg>
+
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Textures</h2>
+
+          <div class="two-col" style="grid-template-columns: 60% 1fr; font-size: 0.8em;">
+            <div class="two-row" style="grid-template-rows: 25% 1fr;">
+              <pre><code data-trim data-noescape data-line-numbers class="hljs javascript">
+                const img = new Image();
+                img.src = '...';
+
+                const tex = gl.createTexture()
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, 0);
+                gl.texImage2D(
+                  /*target=*/gl.TEXTURE_2D,
+                  /*level=*/0,
+                  /*internalFormat=*/gl.RGB,
+                  /*format=*/gl.RGB,
+                  /*type=*/gl.UNSIGNED_BYTE,
+                  /*srcData=*/img
+                );
+              </code></pre>
+            </div>
+
+            <svg version="1.2" preserveAspectRatio="xMaxYMid" width="80%" viewbox="-3 -1 96 64" xmlns="http://www.w3.org/2000/svg">
+              <g font-size="4" style="font-family:sans-serif;">
+
+                <g transform="translate(0,4)">
+                  <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="10" y="4.5">Array Buffers</text>
+                </g>
+
+                <g transform="translate(60,22)">
+                  <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="3" y="4.5">Uniforms</text>
+                </g>
+
+                <g transform="translate(60,34)">
+                  <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffcccc; stroke-width:0.2;stroke:red;"/>
+                  <text x="3" y="4.5" style="fill:red;">Textures</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <line x1= "60.1" y1="24" x2="48" y2="19"/>
+                  <line x1= "60.1" y1="26" x2="48" y2="43"/>
+                  <line x1= "60.1" y1="36" x2="48" y2="19" style="stroke:red;"/>
+                  <line x1= "60.1" y1="38" x2="48" y2="43" style="stroke:red;"/>
+                </g>
+
+                <g>
+                  <g id="vline">
+                    <line  x1="4"  y1="10" x2="4"  y2="16" style="fill:none; stroke-width:0.2;stroke:black;"/>
+                    <polyline  points="4,16 3.25,14.5 4.75,14.5" style="fill:black; stroke:none;"/>
+                  </g>
+                  <use href="#vline" transform="translate( 8,0)"/>
+                  <use href="#vline" transform="translate(16,0)"/>
+                  <use href="#vline" transform="translate(24,0)"/>
+                  <use href="#vline" transform="translate(32,0)"/>
+                  <use href="#vline" transform="translate(40,0)"/>
+                </g>
+
+                <g transform="translate(0,16)">
+                  <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                  <text x="12" y="4.5">Vertex Shader</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <g>
+                    <line x1= "4" y1="22" x2="10" y2="28"/>
+                    <line x1="12" y1="22" x2="12" y2="28"/>
+                    <line x1="20" y1="22" x2="14" y2="28"/>
+                  </g>
+                
+                  <g>
+                    <line x1="28" y1="22" x2="28" y2="28"/>
+                  </g>
+                
+                  <g>
+                    <line x1="36" y1="22" x2="39.5" y2="28"/>
+                    <line x1="44" y1="22" x2="40.5" y2="28"/>
+                  </g>
+                
+                  <g transform="translate(9,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <polyline points="1,1 5,2 3,5 1,1" style="fill:lightgray;"/>
+                  </g>
+                
+                  <g transform="translate(25,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <circle cx="3" cy="3" r="1.5" style="fill:lightgray;"/>
+                  </g>
+                
+                  <g transform="translate(37,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <line x1="1" y1="4.5" x2= "5" y2="2" style="stroke-width:0.3"/>
+                  </g>
+                
+                  <g>
+                    <line x1="10" y1="34" x2= "4" y2="40"/>
+                    <line x1="11" y1="34" x2= "8" y2="40"/>
+                    <line x1="12" y1="34" x2="12" y2="40"/>
+                    <line x1="13" y1="34" x2="16" y2="40"/>
+                    <line x1="14" y1="34" x2="20" y2="40"/>
+                
+                    <line x1="28" y1="34" x2="24" y2="40"/>
+                    <line x1="28" y1="34" x2="28" y2="40"/>
+                    <line x1="28" y1="34" x2="32" y2="40"/>
+                
+                    <line x1="39.5"  y1="34" x2="36"    y2="40"/>
+                    <line x1="39.83" y1="34" x2="38.67" y2="40"/>
+                    <line x1="40.17" y1="34" x2="41.33" y2="40"/>
+                    <line x1="40.5"  y1="34" x2="44"    y2="40"/>
+                  </g>
+                </g>
+
+                <g transform="translate(0,40)">
+                  <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                  <text x="6" y="4.5">Fragment Shader</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <line x1= "4"    y1="46" x2= "4"    y2="52"/>
+                  <line x1= "8"    y1="46" x2= "8"    y2="52"/>
+                  <line x1="12"    y1="46" x2="12"    y2="52"/>
+                  <line x1="16"    y1="46" x2="16"    y2="52"/>
+                  <line x1="20"    y1="46" x2="20"    y2="52"/>
+
+                  <line x1="24"    y1="46" x2="24"    y2="52"/>
+                  <line x1="28"    y1="46" x2="28"    y2="52"/>
+                  <line x1="32"    y1="46" x2="32"    y2="52"/>
+
+                  <line x1="36"    y1="46" x2="36"    y2="52"/>
+                  <line x1="38.67" y1="46" x2="38.67" y2="52"/>
+                  <line x1="41.33" y1="46" x2="41.33" y2="52"/>
+                  <line x1="44"    y1="46" x2="44"    y2="52"/>
+                </g>
+
+                <g transform="translate(0,52)">
+                  <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="4.5" y="4.5">Screen/Framebuffer</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </section>
+
+        <section>
+          <h2>Shader 4: Texture Inputs</h2>
+
+          <div class="two-col" style="grid-template-columns: 50% 1fr; font-size: 0.75em;">
+
+            <div class="two-row">
+              <pre class="shader-sample-vert"><code id="shader4-vert" data-trim data-noescape data-line-numbers class="hljs glsl">
+                // VERTEX_SHADER
+                in vec2 in_xy;
+
+                uniform vec2 tex_size;
+
+                out vec2 ij;
+
+                void main() {
+                  ij  = in_xy*vec2(0.5,-0.5) + 0.5; // [0,1)
+                  ij *= tex_size;
+                  gl_Position = vec4(in_xy,0,1);
+                }
+              </code></pre>
+              <pre class="shader-sample-frag"><code id="shader4-frag" data-trim data-noescape data-line-numbers class="hljs glsl">
+                // FRAGMENT_SHADER
+                in vec2 ij;
+
+                uniform sampler2D <mark>tex_data</mark>;
+
+                out vec4 out_color;
+
+                void main() {
+                  out_color = texelFetch(tex_data, ivec2(ij), 0);
+                }
+              </code></pre>
+            </div>
+
+            <div class="fragment two-row">
+
+              <pre class="shader-sample-js"><code id="shader4-js"   data-trim data-noescape data-line-numbers class="hljs glsl">
+                const loc_tex_size = gl.getUniformLocation(
+                  program, 'tex_size'
+                );
+                gl.uniform2f(loc_tex_size, img.width, img.height);
+                gl.activeTexture(gl.TEXTURE0 + 0);
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.drawArrays(gl.TRIANGLES, 0,2*3);
+              </code></pre>
+
+              <svg version="1.2" preserveAspectRatio="xMidYMax" style="width: 56%;" viewbox="-1 -1 2 2" xmlns="http://www.w3.org/2000/svg">
+                <image id="shader4-result" href="./img/shader4.png" x="-1" y="-1" height="2" width="2"/>
+              </svg>
+
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h2>Write Texture (Framebuffer)</h2>
+
+          <div class="two-col" style="grid-template-columns: 52% 1fr; font-size: 0.8em;">
+            <pre><code data-trim data-noescape data-line-numbers class="hljs javascript">
+              const fb = gl.createFramebuffer();
+              gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+              gl.framebufferTexture2D(
+                /*target=*/gl.DRAW_FRAMEBUFFER,
+                /*attachment=*/gl.COLOR_ATTACHMENT0,
+                /*texTarget=*/gl.TEXTURE_2D,
+                /*texture=*/<mark>tex</mark>,
+                /*level=*/0
+              );
+
+              gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+              gl.viewport(0,0, width,height); // <- draw region
+              gl.drawArrays(gl.TRIANGLES, 0,6);
+
+              gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            </code></pre>
+
+            <svg version="1.2" preserveAspectRatio="xMaxYMid" width="80%" viewbox="-3 -1 96 64" xmlns="http://www.w3.org/2000/svg">
+              <g font-size="4" style="font-family:sans-serif;">
+
+                <g transform="translate(0,4)">
+                  <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="10" y="4.5">Array Buffers</text>
+                </g>
+
+                <g transform="translate(60,22)">
+                  <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="3" y="4.5" style="fill:black;">Uniforms</text>
+                </g>
+
+                <g transform="translate(60,34)">
+                  <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="3" y="4.5">Textures</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <line x1= "60.1" y1="24" x2="48" y2="19"/>
+                  <line x1= "60.1" y1="26" x2="48" y2="43"/>
+                  <line x1= "60.1" y1="36" x2="48" y2="19"/>
+                  <line x1= "60.1" y1="38" x2="48" y2="43"/>
+                </g>
+
+                <g>
+                  <g id="vline">
+                    <line  x1="4"  y1="10" x2="4"  y2="16" style="fill:none; stroke-width:0.2;stroke:black;"/>
+                    <polyline  points="4,16 3.25,14.5 4.75,14.5" style="fill:black; stroke:none;"/>
+                  </g>
+                  <use href="#vline" transform="translate( 8,0)"/>
+                  <use href="#vline" transform="translate(16,0)"/>
+                  <use href="#vline" transform="translate(24,0)"/>
+                  <use href="#vline" transform="translate(32,0)"/>
+                  <use href="#vline" transform="translate(40,0)"/>
+                </g>
+
+                <g transform="translate(0,16)">
+                  <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                  <text x="12" y="4.5">Vertex Shader</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <g>
+                    <line x1= "4" y1="22" x2="10" y2="28"/>
+                    <line x1="12" y1="22" x2="12" y2="28"/>
+                    <line x1="20" y1="22" x2="14" y2="28"/>
+                  </g>
+                
+                  <g>
+                    <line x1="28" y1="22" x2="28" y2="28"/>
+                  </g>
+                
+                  <g>
+                    <line x1="36" y1="22" x2="39.5" y2="28"/>
+                    <line x1="44" y1="22" x2="40.5" y2="28"/>
+                  </g>
+                
+                  <g transform="translate(9,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <polyline points="1,1 5,2 3,5 1,1" style="fill:lightgray;"/>
+                  </g>
+                
+                  <g transform="translate(25,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <circle cx="3" cy="3" r="1.5" style="fill:lightgray;"/>
+                  </g>
+                
+                  <g transform="translate(37,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <line x1="1" y1="4.5" x2= "5" y2="2" style="stroke-width:0.3"/>
+                  </g>
+                
+                  <g>
+                    <line x1="10" y1="34" x2= "4" y2="40"/>
+                    <line x1="11" y1="34" x2= "8" y2="40"/>
+                    <line x1="12" y1="34" x2="12" y2="40"/>
+                    <line x1="13" y1="34" x2="16" y2="40"/>
+                    <line x1="14" y1="34" x2="20" y2="40"/>
+                
+                    <line x1="28" y1="34" x2="24" y2="40"/>
+                    <line x1="28" y1="34" x2="28" y2="40"/>
+                    <line x1="28" y1="34" x2="32" y2="40"/>
+                
+                    <line x1="39.5"  y1="34" x2="36"    y2="40"/>
+                    <line x1="39.83" y1="34" x2="38.67" y2="40"/>
+                    <line x1="40.17" y1="34" x2="41.33" y2="40"/>
+                    <line x1="40.5"  y1="34" x2="44"    y2="40"/>
+                  </g>
+                </g>
+
+                <g transform="translate(0,40)">
+                  <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                  <text x="6" y="4.5">Fragment Shader</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:red;">
+                  <line x1= "4"    y1="46" x2= "4"    y2="52"/>
+                  <line x1= "8"    y1="46" x2= "8"    y2="52"/>
+                  <line x1="12"    y1="46" x2="12"    y2="52"/>
+                  <line x1="16"    y1="46" x2="16"    y2="52"/>
+                  <line x1="20"    y1="46" x2="20"    y2="52"/>
+
+                  <line x1="24"    y1="46" x2="24"    y2="52"/>
+                  <line x1="28"    y1="46" x2="28"    y2="52"/>
+                  <line x1="32"    y1="46" x2="32"    y2="52"/>
+
+                  <line x1="36"    y1="46" x2="36"    y2="52"/>
+                  <line x1="38.67" y1="46" x2="38.67" y2="52"/>
+                  <line x1="41.33" y1="46" x2="41.33" y2="52"/>
+                  <line x1="44"    y1="46" x2="44"    y2="52"/>
+                </g>
+
+                <g transform="translate(0,52)">
+                  <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffcccc; stroke-width:0.2;stroke:red;"/>
+                  <text x="4.5" y="4.5" style="fill:red;">Screen/Framebuffer</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </section>
+
+        <section>
+          <h2>Read Texture (Framebuffer)</h2>
+
+          <div class="two-col" style="grid-template-columns: 52% 1fr; font-size: 0.8em;">
+            <pre><code data-trim data-noescape data-line-numbers class="hljs javascript">
+              const fb = gl.createFramebuffer();
+              gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+              gl.framebufferTexture2D(
+                /*target=*/gl.DRAW_FRAMEBUFFER,
+                /*attachment=*/gl.COLOR_ATTACHMENT0,
+                /*texTarget=*/gl.TEXTURE_2D,
+                /*texture=*/tex,
+                /*level=*/0
+              );
+
+              const <mark>pixels</mark> = new Float32Array(2*2*4)
+              gl.readPixels(x,y, 2,2, gl.RGBA, gl.FLOAT, <mark>pixels</mark>)
+              console.log(<mark>pixels</mark>)
+            </code></pre>
+
+            <svg version="1.2" preserveAspectRatio="xMaxYMid" width="80%" viewbox="-3 -1 96 64" xmlns="http://www.w3.org/2000/svg">
+              <g font-size="4" style="font-family:sans-serif;">
+
+                <g transform="translate(0,4)">
+                  <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="10" y="4.5">Array Buffers</text>
+                </g>
+
+                <g transform="translate(60,22)">
+                  <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="3" y="4.5" style="fill:black;">Uniforms</text>
+                </g>
+
+                <g transform="translate(60,34)">
+                  <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="3" y="4.5">Textures</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <line x1= "60.1" y1="24" x2="48" y2="19"/>
+                  <line x1= "60.1" y1="26" x2="48" y2="43"/>
+                  <line x1= "60.1" y1="36" x2="48" y2="19"/>
+                  <line x1= "60.1" y1="38" x2="48" y2="43"/>
+                </g>
+
+                <g>
+                  <g id="vline">
+                    <line  x1="4"  y1="10" x2="4"  y2="16" style="fill:none; stroke-width:0.2;stroke:black;"/>
+                    <polyline  points="4,16 3.25,14.5 4.75,14.5" style="fill:black; stroke:none;"/>
+                  </g>
+                  <use href="#vline" transform="translate( 8,0)"/>
+                  <use href="#vline" transform="translate(16,0)"/>
+                  <use href="#vline" transform="translate(24,0)"/>
+                  <use href="#vline" transform="translate(32,0)"/>
+                  <use href="#vline" transform="translate(40,0)"/>
+                </g>
+
+                <g transform="translate(0,16)">
+                  <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                  <text x="12" y="4.5">Vertex Shader</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <g>
+                    <line x1= "4" y1="22" x2="10" y2="28"/>
+                    <line x1="12" y1="22" x2="12" y2="28"/>
+                    <line x1="20" y1="22" x2="14" y2="28"/>
+                  </g>
+                
+                  <g>
+                    <line x1="28" y1="22" x2="28" y2="28"/>
+                  </g>
+                
+                  <g>
+                    <line x1="36" y1="22" x2="39.5" y2="28"/>
+                    <line x1="44" y1="22" x2="40.5" y2="28"/>
+                  </g>
+                
+                  <g transform="translate(9,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <polyline points="1,1 5,2 3,5 1,1" style="fill:lightgray;"/>
+                  </g>
+                
+                  <g transform="translate(25,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <circle cx="3" cy="3" r="1.5" style="fill:lightgray;"/>
+                  </g>
+                
+                  <g transform="translate(37,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <line x1="1" y1="4.5" x2= "5" y2="2" style="stroke-width:0.3"/>
+                  </g>
+                
+                  <g>
+                    <line x1="10" y1="34" x2= "4" y2="40"/>
+                    <line x1="11" y1="34" x2= "8" y2="40"/>
+                    <line x1="12" y1="34" x2="12" y2="40"/>
+                    <line x1="13" y1="34" x2="16" y2="40"/>
+                    <line x1="14" y1="34" x2="20" y2="40"/>
+                
+                    <line x1="28" y1="34" x2="24" y2="40"/>
+                    <line x1="28" y1="34" x2="28" y2="40"/>
+                    <line x1="28" y1="34" x2="32" y2="40"/>
+                
+                    <line x1="39.5"  y1="34" x2="36"    y2="40"/>
+                    <line x1="39.83" y1="34" x2="38.67" y2="40"/>
+                    <line x1="40.17" y1="34" x2="41.33" y2="40"/>
+                    <line x1="40.5"  y1="34" x2="44"    y2="40"/>
+                  </g>
+                </g>
+
+                <g transform="translate(0,40)">
+                  <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                  <text x="6" y="4.5">Fragment Shader</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:red;">
+                  <line x1= "4"    y1="46" x2= "4"    y2="52"/>
+                  <line x1= "8"    y1="46" x2= "8"    y2="52"/>
+                  <line x1="12"    y1="46" x2="12"    y2="52"/>
+                  <line x1="16"    y1="46" x2="16"    y2="52"/>
+                  <line x1="20"    y1="46" x2="20"    y2="52"/>
+
+                  <line x1="24"    y1="46" x2="24"    y2="52"/>
+                  <line x1="28"    y1="46" x2="28"    y2="52"/>
+                  <line x1="32"    y1="46" x2="32"    y2="52"/>
+
+                  <line x1="36"    y1="46" x2="36"    y2="52"/>
+                  <line x1="38.67" y1="46" x2="38.67" y2="52"/>
+                  <line x1="41.33" y1="46" x2="41.33" y2="52"/>
+                  <line x1="44"    y1="46" x2="44"    y2="52"/>
+                </g>
+
+                <g transform="translate(0,52)">
+                  <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffcccc; stroke-width:0.2;stroke:red;"/>
+                  <text x="4.5" y="4.5" style="fill:red;">Screen/Framebuffer</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </section>
+
+                <section>
+          <h2>Computations with WebGL</h2>
+
+          <div class="two-col" style="grid-template-columns: 52% 1fr; font-size: 0.8em;">
+            <ul>
+              <li>Read from Texture(s)
+              <li>Write to Texture/Framebuffer(s)
+              <li><b>Fragment Shader:</b> Computes Results<br>
+                  <b>Vertex Shader:</b> Decides where to write to
+              <li>Only simple read/write
+              <li>Only simple 2D arrays
+              <ul>
+                <li>Nested data structures hard
+                <li>Variable length data difficult
+                <li>...
+              </ul>
+            </ul>
+
+            <svg version="1.2" preserveAspectRatio="xMaxYMid" width="80%" viewbox="-3 -1 96 64" xmlns="http://www.w3.org/2000/svg">
+              <g font-size="4" style="font-family:sans-serif;">
+
+                <g transform="translate(0,4)">
+                  <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="10" y="4.5">Array Buffers</text>
+                </g>
+
+                <g transform="translate(60,22)">
+                  <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="3" y="4.5" style="fill:black;">Uniforms</text>
+                </g>
+
+                <g transform="translate(60,34)">
+                  <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="3" y="4.5">Textures</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <line x1= "60.1" y1="24" x2="48" y2="19"/>
+                  <line x1= "60.1" y1="26" x2="48" y2="43"/>
+                  <line x1= "60.1" y1="36" x2="48" y2="19"/>
+                  <line x1= "60.1" y1="38" x2="48" y2="43"/>
+                </g>
+
+                <g>
+                  <g id="vline">
+                    <line  x1="4"  y1="10" x2="4"  y2="16" style="fill:none; stroke-width:0.2;stroke:black;"/>
+                    <polyline  points="4,16 3.25,14.5 4.75,14.5" style="fill:black; stroke:none;"/>
+                  </g>
+                  <use href="#vline" transform="translate( 8,0)"/>
+                  <use href="#vline" transform="translate(16,0)"/>
+                  <use href="#vline" transform="translate(24,0)"/>
+                  <use href="#vline" transform="translate(32,0)"/>
+                  <use href="#vline" transform="translate(40,0)"/>
+                </g>
+
+                <g transform="translate(0,16)">
+                  <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                  <text x="12" y="4.5">Vertex Shader</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <g>
+                    <line x1= "4" y1="22" x2="10" y2="28"/>
+                    <line x1="12" y1="22" x2="12" y2="28"/>
+                    <line x1="20" y1="22" x2="14" y2="28"/>
+                  </g>
+                
+                  <g>
+                    <line x1="28" y1="22" x2="28" y2="28"/>
+                  </g>
+                
+                  <g>
+                    <line x1="36" y1="22" x2="39.5" y2="28"/>
+                    <line x1="44" y1="22" x2="40.5" y2="28"/>
+                  </g>
+                
+                  <g transform="translate(9,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <polyline points="1,1 5,2 3,5 1,1" style="fill:lightgray;"/>
+                  </g>
+                
+                  <g transform="translate(25,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <circle cx="3" cy="3" r="1.5" style="fill:lightgray;"/>
+                  </g>
+                
+                  <g transform="translate(37,28)">
+                    <rect x="0" y="0" width="6" height="6"/>
+                    <line x1="1" y1="4.5" x2= "5" y2="2" style="stroke-width:0.3"/>
+                  </g>
+                
+                  <g>
+                    <line x1="10" y1="34" x2= "4" y2="40"/>
+                    <line x1="11" y1="34" x2= "8" y2="40"/>
+                    <line x1="12" y1="34" x2="12" y2="40"/>
+                    <line x1="13" y1="34" x2="16" y2="40"/>
+                    <line x1="14" y1="34" x2="20" y2="40"/>
+                
+                    <line x1="28" y1="34" x2="24" y2="40"/>
+                    <line x1="28" y1="34" x2="28" y2="40"/>
+                    <line x1="28" y1="34" x2="32" y2="40"/>
+                
+                    <line x1="39.5"  y1="34" x2="36"    y2="40"/>
+                    <line x1="39.83" y1="34" x2="38.67" y2="40"/>
+                    <line x1="40.17" y1="34" x2="41.33" y2="40"/>
+                    <line x1="40.5"  y1="34" x2="44"    y2="40"/>
+                  </g>
+                </g>
+
+                <g transform="translate(0,40)">
+                  <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+                  <text x="6" y="4.5">Fragment Shader</text>
+                </g>
+
+                <g style="fill:none; stroke-width:0.2;stroke:black;">
+                  <line x1= "4"    y1="46" x2= "4"    y2="52"/>
+                  <line x1= "8"    y1="46" x2= "8"    y2="52"/>
+                  <line x1="12"    y1="46" x2="12"    y2="52"/>
+                  <line x1="16"    y1="46" x2="16"    y2="52"/>
+                  <line x1="20"    y1="46" x2="20"    y2="52"/>
+
+                  <line x1="24"    y1="46" x2="24"    y2="52"/>
+                  <line x1="28"    y1="46" x2="28"    y2="52"/>
+                  <line x1="32"    y1="46" x2="32"    y2="52"/>
+
+                  <line x1="36"    y1="46" x2="36"    y2="52"/>
+                  <line x1="38.67" y1="46" x2="38.67" y2="52"/>
+                  <line x1="41.33" y1="46" x2="41.33" y2="52"/>
+                  <line x1="44"    y1="46" x2="44"    y2="52"/>
+                </g>
+
+                <g transform="translate(0,52)">
+                  <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+                  <text x="4.5" y="4.5" style="fill:black;">Screen/Framebuffer</text>
+                </g>
+              </g>
+            </svg>
+          </div>
+        </section>
+
+        <section>
+          <h2>Game of <s>Thrones</s> Life</h2>
+
+          <table style="width:70%; font-size: 0.9em;"><tbody>
+            <col width="15%">
+            <col width="70%">
+            <col width="15%">
+            <tr>
+              <td colspan="2">
+                <ul style="font-size: 0.6em;">
+                  <li>Simulation with discrete timesteps
+                  <li>Grid of Square cells
+                  <li>At a given time, each cell is either<br><b>Alive</b> (black) or <b>Dead</b> (white)
+                  </ul>
+                </ul>
+              <td>
+              <svg version="1.2" preserveAspectRatio="xMidYMid" height="100px" viewbox="0 0 13 10" xmlns="http://www.w3.org/2000/svg">
+                <g style="stroke:none; fill:black;">
+                  <rect x= "3" y="1" width= "1" height="1"/>
+                  <rect x= "9" y="1" width= "1" height="1"/>
+                  <rect x= "4" y="2" width= "1" height="1"/>
+                  <rect x= "8" y="2" width= "1" height="1"/>
+                  <rect x= "3" y="3" width= "7" height="1"/>
+                  <rect x= "2" y="4" width= "2" height="1"/>
+                  <rect x= "5" y="4" width= "3" height="1"/>
+                  <rect x= "9" y="4" width= "2" height="1"/>
+                  <rect x= "1" y="5" width="11" height="1"/>
+                  <rect x= "1" y="6" width= "1" height="2"/>
+                  <rect x="11" y="6" width= "1" height="2"/>
+                  <rect x= "3" y="6" width= "1" height="2"/>
+                  <rect x= "9" y="6" width= "1" height="2"/>
+                  <rect x= "4" y="6" width= "7" height="1"/>
+                  <rect x= "4" y="8" width= "2" height="1"/>
+                  <rect x= "7" y="8" width= "2" height="1"/>
+                </g>
+                <g style="stroke:lightgray; stroke-width:0.1; fill:none;">
+                  <line y1="1" y2="1" x1="0" x2="13"/>
+                  <line y1="2" y2="2" x1="0" x2="13"/>
+                  <line y1="3" y2="3" x1="0" x2="13"/>
+                  <line y1="4" y2="4" x1="0" x2="13"/>
+                  <line y1="5" y2="5" x1="0" x2="13"/>
+                  <line y1="6" y2="6" x1="0" x2="13"/>
+                  <line y1="7" y2="7" x1="0" x2="13"/>
+                  <line y1="8" y2="8" x1="0" x2="13"/>
+                  <line y1="9" y2="9" x1="0" x2="13"/>
+
+                  <line y1="0" y2="10" x1= "1" x2= "1"/>
+                  <line y1="0" y2="10" x1= "2" x2= "2"/>
+                  <line y1="0" y2="10" x1= "3" x2= "3"/>
+                  <line y1="0" y2="10" x1= "4" x2= "4"/>
+                  <line y1="0" y2="10" x1= "5" x2= "5"/>
+                  <line y1="0" y2="10" x1= "6" x2= "6"/>
+                  <line y1="0" y2="10" x1= "7" x2= "7"/>
+                  <line y1="0" y2="10" x1= "8" x2= "8"/>
+                  <line y1="0" y2="10" x1= "9" x2= "9"/>
+                  <line y1="0" y2="10" x1="10" x2="10"/>
+                  <line y1="0" y2="10" x1="11" x2="11"/>
+                  <line y1="0" y2="10" x1="12" x2="12"/>
+                </g>
+              </svg>
+            </tr>
+            <tr>
+              <th style="vertical-align: middle; border-bottom: 1px solid;" rowspan="2">Alive</th>
+              <td style="vertical-align: middle;">(#neighbors &lt; 2) &rarr; Dies</th>
+              <td>
+                <svg version="1.2" preserveAspectRatio="xMidYMid" height="96px" viewbox="0 0 3 3" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="0" y="0" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:black;"/>
+                  <rect x="1" y="0" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="2" y="0" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="0" y="1" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="1" y="1" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:black;"/>
+                  <rect x="2" y="1" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="0" y="2" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="1" y="2" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="2" y="2" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <circle cx="1.5" cy="1.5" r="0.4" style="stroke:white; stroke-width:0.1; fill:none;"/>
+                  <line x1="1.25" y1="1.3" x2="1.45" y2="1.5" style="stroke:white; stroke-width:0.075; fill:none;"/>
+                  <line x1="1.45" y1="1.3" x2="1.25" y2="1.5" style="stroke:white; stroke-width:0.075; fill:none;"/>
+                  <line x1="1.55" y1="1.3" x2="1.75" y2="1.5" style="stroke:white; stroke-width:0.075; fill:none;"/>
+                  <line x1="1.75" y1="1.3" x2="1.55" y2="1.5" style="stroke:white; stroke-width:0.075; fill:none;"/>
+                  <line cx="1.7" cy="1.4" r="0.1" style="stroke:white;"/>
+                  <path d="M1.3,1.7 A0.25,0.25,0,0,1,1.7,1.7" style="stroke:white; stroke-width:0.1; fill:none;"/>
+                </svg>
+              </td>
+            </tr>
+            <tr>
+              <td style="vertical-align: middle; border-bottom: 1px solid;">(#neighbors &gt; 3) &rarr; Dies</th>
+              <td style="border-bottom: 1px solid;">
+                <svg version="1.2" preserveAspectRatio="xMidYMid" height="96px" viewbox="0 0 3 3" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="0" y="0" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:black;"/>
+                  <rect x="1" y="0" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:black;"/>
+                  <rect x="2" y="0" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="0" y="1" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:black;"/>
+                  <rect x="1" y="1" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:black;"/>
+                  <rect x="2" y="1" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="0" y="2" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="1" y="2" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:black;"/>
+                  <rect x="2" y="2" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <circle cx="1.5" cy="1.5" r="0.4" style="stroke:white; stroke-width:0.1; fill:none;"/>
+                  <line x1="1.25" y1="1.3" x2="1.45" y2="1.5" style="stroke:white; stroke-width:0.075; fill:none;"/>
+                  <line x1="1.45" y1="1.3" x2="1.25" y2="1.5" style="stroke:white; stroke-width:0.075; fill:none;"/>
+                  <line x1="1.55" y1="1.3" x2="1.75" y2="1.5" style="stroke:white; stroke-width:0.075; fill:none;"/>
+                  <line x1="1.75" y1="1.3" x2="1.55" y2="1.5" style="stroke:white; stroke-width:0.075; fill:none;"/>
+                  <line cx="1.7" cy="1.4" r="0.1" style="stroke:white;"/>
+                  <path d="M1.3,1.7 A0.25,0.25,0,0,1,1.7,1.7" style="stroke:white; stroke-width:0.1; fill:none;"/>
+                </svg>
+              </td>
+            </tr>
+            <tr>
+              <th style="vertical-align: middle;">Dead</th>
+              <td style="vertical-align: middle;">(#neighbors = 3) &rarr; Resurrects</th>
+              <td>
+                <svg version="1.2" preserveAspectRatio="xMidYMid" height="96px" viewbox="0 0 3 3" xmlns="http://www.w3.org/2000/svg">
+                  <rect x="0" y="0" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="1" y="0" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="2" y="0" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:black;"/>
+                  <rect x="0" y="1" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:black;"/>
+                  <rect x="1" y="1" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="2" y="1" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="0" y="2" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <rect x="1" y="2" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:black;"/>
+                  <rect x="2" y="2" width="1" height="1" style="stroke:lightgray; stroke-width:0.1; fill:white;"/>
+                  <circle cx="1.5" cy="1.5" r="0.4" style="stroke:black; stroke-width:0.1; fill:none;"/>
+                  <circle cx="1.3" cy="1.4" r="0.1" style="stroke:none; fill:black;"/>
+                  <circle cx="1.7" cy="1.4" r="0.1" style="stroke:none; fill:black;"/>
+                  <path d="M1.3,1.6 A0.25,0.25,0,0,0,1.7,1.6" style="stroke:black; stroke-width:0.1; fill:none;"/>
+                </svg>
+              </td>
+            </tr>
+          </tbody></table>
+        </section>
+
+        <section>
+          <h2>Game of Life: Shader</h2>
+
+          <div style="font-size: 0.75em;">
+            <pre class="shader-sample-js"  ><code id="shader1-js"   data-trim data-noescape data-line-numbers class="hljs glsl">
+              // FRAGMENT SHADER
+              in vec2 cell_ij;
+              uniform sampler2D cells;
+              out float cell;
+
+              void main() {
+                ivec2 ij = ivec2(cell_ij);
+
+                int neighbors = 0;
+                for( int i=0; i < 3; i++ )
+                for( int j=0; j < 3; j++ )
+                  neighbors += int( texelFetch(cells, ivec2(i,j) + ij, 0).x );
+
+                cell = texelFetch(cells, 1 + ij, 0).x;
+                if( cell == 0.0 )
+                  cell = 3 == neighbors ? 1.0 : 0.0;
+                else
+                  cell = 3 <= neighbors && neighbors <= 4 ? 1.0 : 0.0;
+              }
+            </code></pre>
+          </div>
+        </section>
+
+        <section>
+           <h2>Demo, Links &amp; Questions</h2>
+
+           <ul>
+             <li><a href="https://dirktoewe.github.io/game_of_js/game_of_life.html" target="_blank">DirkToewe.GitHub.io/game_of_js/game_of_life.html</a>
+             <li><a href="https://github.com/DirkToewe/game_of_js" target="_blank">GitHub.com/DirkToewe/game_of_js</a>
+             <li><a href="https://github.com/DirkToewe/presentations" target="_blank">GitHub.com/DirkToewe/presentations</a>
+             <li>Run JS on GPU:<a href="https://gpu.rocks/">GPU.rocks</a>
+             <li>WebGL Numerics:<a href="https://www.tensorflow.org/js">https://www.tensorflow.org/js</a>
+           </ul>
+        </section>
+
+      </div>
+    </div>
+
+    <script src="./revealjs/js/reveal.js"></script>
+    <script>
+      // More info about config & dependencies:
+      // - https://github.com/hakimel/reveal.js#configuration
+      // - https://github.com/hakimel/reveal.js#dependencies
+      Reveal.initialize({
+
+        width: 1280,
+	      height: 720,
+
+//        math: {
+//          mathjax: './revealjs/MathJax-2.7.5/MathJax.js' //offline-local
+//        },
+        dependencies: [
+          { src: './revealjs/plugin/markdown/marked.js'                  },
+          { src: './revealjs/plugin/markdown/markdown.js'                },
+//          { src: './revealjs/plugin/math/math.js',           async: true },
+          { src: './revealjs/plugin/notes/notes.js',         async: true },
+          { src: './revealjs/plugin/highlight/highlight.js', async: true }
+        ],
+        hash: true
+      });
+    </script>
+  </body>
+</html>

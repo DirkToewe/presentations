@@ -1,0 +1,326 @@
+<!--
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+  <title>Game of Life - CPU vs WebGL</title>
+
+  <script src="./game_of_life_io.js"></script>
+  <script src="./game_of_life_cpu.js"></script>
+  <script src="./game_of_life_webgl.js"></script>
+
+  <style media="all">
+    #main:fullscreen{
+      background-color:white;
+    }
+    #main {
+      width : 100%;
+      height: 98vh;
+      display: grid;
+      grid-template-rows: auto 1fr; 
+      grid-template-columns: auto 1fr 128px 96px 96px auto auto auto auto auto auto; 
+      grid-template-areas:
+        "fullscreen .      ups    fps    time   clear  pattern select resolution dt     play"
+        "canvas     canvas canvas canvas canvas canvas canvas  canvas canvas     canvas canvas";
+    }
+    #main-fullscreen{ grid-area: fullscreen; }
+    #main-ups       { grid-area: ups; }
+    #main-fps       { grid-area: fps; }
+    #main-time      { grid-area: time; }
+    #main-clear     { grid-area: clear; }
+    #main-pattern   { grid-area: pattern; }
+    #main-dt        { grid-area: dt; }
+    #main-select    { grid-area: select; }
+    #main-resolution{ grid-area: resolution; }
+    #main-play      { grid-area: play; }
+    #main-canvas    { grid-area: canvas; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="main">
+    <button id="main-fullscreen">Fullscreen</button>
+
+    <span   id="main-ups"></span>
+    <span   id="main-fps"></span>
+    <span   id="main-time"></span>
+
+    <button id="main-clear">Clear</button>
+
+    <select id="main-pattern">
+      <option value="<toggle>">&lt;Toggle Cell&gt;</option>
+    </select>
+
+    <select id="main-select">
+      <option value="cpu">CPU</option>
+      <option value="webgl">WebGL</option>
+    </select>
+
+    <select id="main-resolution">
+    </select>
+
+    <select id="main-dt">
+    </select>
+
+    <button id="main-play">▶</button>
+
+    <canvas id="main-canvas">
+  </div>
+  <script type="text/javascript">
+'use strict';
+(async () => {
+  const   main = document.getElementById('main'),
+    fullscreen = document.getElementById('main-fullscreen'),
+           ups = document.getElementById('main-ups'),
+           fps = document.getElementById('main-fps'),
+          time = document.getElementById('main-time'),
+         clear = document.getElementById('main-clear'),
+       pattern = document.getElementById('main-pattern'),
+            dt = document.getElementById('main-dt'),
+        select = document.getElementById('main-select'),
+    resolution = document.getElementById('main-resolution'),
+     startStop = document.getElementById('main-play')
+  let canvas = undefined;
+
+  fullscreen.onclick = () => {
+    if( document.fullscreenElement )
+      document.exitFullscreen();
+    else if( main.requestFullscreen )
+      main.requestFullscreen();
+  }
+
+  {
+    let sizes = []
+    for( let size=32; size <= 4*1024; size*=2 )
+      sizes.push(size)
+    sizes.push(5*1024)
+    sizes.push(6*1024)
+    sizes.push(7*1024)
+
+    for( const size of sizes )
+    {
+        const opt = document.createElement('option')
+        opt.value = `[${size},${size}]`
+        opt.innerHTML = `${size}x${size}`
+        resolution.appendChild(opt)
+    }
+    resolution.selectedIndex = 0
+  }
+
+  for( const p of PATTERNS )
+  {
+    const opt = document.createElement('option')
+    opt.value = JSON.stringify(p.cells)
+    opt.innerHTML = p.name
+    pattern.appendChild(opt)
+  }
+
+  for( const t of [4, 8, 16, 32, 64, 128, 256, 512, 1024] )
+  {
+    const opt = document.createElement('option')
+    opt.value = t
+    opt.innerHTML = `${t} ms`
+    dt.appendChild(opt)
+  }
+  dt.selectedIndex = 2
+
+  let game, x0, y0, scale = 1
+
+  const zoomIn  = () => scale = scale > 1 ? scale+1 : scale*2,
+        zoomOut = () => scale = scale > 1 ? scale-1 : scale/2
+
+    let dt_ups = 16
+    let dt_fps = 16
+  const dt_smoothing = 0.5;
+  console.assert(0 <= dt_smoothing && dt_smoothing <= 1)
+  let      redrawing = false
+  let      redrawRequest = false
+  function redraw()
+  {
+    redrawRequest = true
+    if( ! redrawing ) {
+      redrawing = true;
+      return (async () => {
+        do {
+          redrawRequest = false
+
+          const t0 = performance.now()
+
+          await game.render(x0,y0, scale)
+
+          const smooth = Math.pow( dt_smoothing, dt_fps / 1000 )
+          dt_fps *=    smooth
+          dt_fps += (1-smooth)*(performance.now() - t0)
+          fps.innerHTML = `${(1000/dt_fps).toFixed(1)} fps`
+        } while(redrawRequest)
+
+        time.innerHTML = `time: ${game.time || 0}`
+
+        console.assert( ! redrawRequest )
+        redrawing = false
+      })()
+    }
+  }
+
+  window.onresize = () => {
+    canvas.width = canvas.offsetWidth
+    canvas.height= canvas.offsetHeight
+    redraw()
+  }
+
+  // SIMULATION START AND STOP FUNCTIONS
+  const timeout = dt => new Promise( resolve => setTimeout(resolve,dt) )
+  let stop = async () => {}
+
+  startStop.onclick = function start()
+  {
+    let loop = true;
+
+    const stopPromise = (async () => {
+      let t0 = performance.now()
+      while(loop) {
+        await timeout( dt.value - performance.now() + t0 )
+
+        t0 = performance.now()
+
+        await game.update()
+
+        const smooth = Math.pow( dt_smoothing, dt_ups / 1000 )
+        dt_ups *=    smooth
+        dt_ups += (1-smooth)*(performance.now() - t0)
+        ups.innerHTML = `${(1000/dt_ups).toFixed(1)} ups`
+
+        redraw()
+      }
+      startStop.innerHTML = '▶'
+      startStop.onclick = start
+      stop = async () => {}
+    })()
+
+    startStop.innerHTML = '▮▮'
+    startStop.onclick = stop = async () => {
+      loop = false;
+      await stopPromise;
+    }
+  }
+
+  // KILL ALL CELLS ("Burn them all!" - Aerys II Targaryen)
+  clear.onclick = async () => {
+    await stop()
+    await game.clear()
+    redraw()
+  }
+
+  // SWITCHING OF BOARD RESOLUTION
+  const resize = async (keepState) => {
+    await stop()
+    if( undefined != canvas )
+      main.removeChild(canvas)
+    canvas = document.createElement('canvas')
+    canvas.id = 'main-canvas'
+    main.appendChild(canvas)
+    canvas.width = canvas.offsetWidth
+    canvas.height= canvas.offsetHeight
+
+    // ADD RIGHT-CLICK CELL MANIPULATION
+    canvas.addEventListener('contextmenu', evt => {
+      const rect = canvas.getBoundingClientRect(),
+            x = (evt.clientX - rect.left - x0) / scale | 0,
+            y = (evt.clientY - rect.top  - y0) / scale | 0;
+      (async () => {
+        if( pattern.value === '<toggle>' )
+          await game.toggleCell(x,y)
+        else {
+          const cells = JSON.parse(pattern.value)
+          for( const [row,col] of cells )
+            await game.setCell(x+col,y+row, 1)
+        }
+        redraw()
+      })()
+      evt.preventDefault()
+      return false
+    }, false);
+  
+    // ADD MOUSE DRAG MOVE CONTROL
+    let mx = undefined,
+        my = undefined
+  
+    canvas.onmousedown = evt => {
+      if( evt.button === 0 ) {
+        mx = evt.clientX
+        my = evt.clientY
+      }
+    }
+    canvas.onmousemove = ({ clientX: x, clientY: y }) => {
+      if( undefined != mx ) {
+        console.assert( undefined != my )
+        x0 += x - mx; mx = x
+        y0 += y - my; my = y
+        redraw()
+      }
+    }
+    canvas.onmouseup = evt => {
+      if( evt.button === 0 )
+        mx = my = undefined
+    }
+
+    const [w,h] = JSON.parse(resolution.value)
+
+    // ADD MOUSE-WHEEL ZOOM CONTROL
+    canvas.addEventListener('wheel', evt => {
+      const {left, top} = canvas.getBoundingClientRect(),
+             s = scale
+      let {deltaY: dY, clientX: x, clientY: y} = evt
+      x -= left
+      y -= top
+  
+      if( dY < 0 ) zoomIn ()
+      else {
+        const [w,h] = JSON.parse(resolution.value)
+        if( w*scale*4/3 > canvas.width || h*scale*4/3 > canvas.height )
+          zoomOut()
+      }
+      scale = Math.max(scale,1/128)
+      x0 = Math.round( x - (x-x0)*scale/s ) 
+      y0 = Math.round( y - (y-y0)*scale/s )
+      redraw()
+  
+      evt.preventDefault()
+      return false
+    }, false);
+
+    if( ! keepState ) {
+      x0 = y0 = 16
+      while( w*scale     <= canvas.width && h*scale     <= canvas.height ) zoomIn ()
+      while( w*scale*1.01 > canvas.width || h*scale*1.01 > canvas.height ) zoomOut()
+    }
+    switch( select.value ) {
+      case 'cpu'  : game = new GameOfLifeCPU  (canvas, w,h); break;
+      case 'webgl': game = new GameOfLifeWebGL(canvas, w,h); break;
+      default: throw new Error('???');
+    }
+
+    redraw()
+  }
+  await resize()
+  select    .onchange = () => resize(true)
+  resolution.onchange = () => resize()
+})()
+  </script>
+</body>
+</html>

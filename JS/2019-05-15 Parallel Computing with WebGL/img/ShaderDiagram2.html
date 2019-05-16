@@ -1,0 +1,146 @@
+<!--
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+  <title>WebGL - Sample 1</title>
+</head>
+<body>
+  <svg version="1.2" preserveAspectRatio="xMidYMid" width="1024px" height="768px" viewbox="0 -1 128 64" xmlns="http://www.w3.org/2000/svg">
+    <g font-size="4" style="font-family:sans-serif;">
+
+      <g transform="translate(0,4)">
+        <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+        <text x="10" y="4.5">Array Buffers</text>
+      </g>
+
+      <g transform="translate(60,22)">
+        <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+        <text x="3" y="4.5">Uniforms</text>
+      </g>
+
+      <g transform="translate(60,34)">
+        <rect x="0" y="0" rx="3" ry="3" width="24" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+        <text x="3" y="4.5">Textures</text>
+      </g>
+
+      <g style="fill:none; stroke-width:0.2;stroke:black;">
+        <line x1= "60.1" y1="24" x2="48" y2="19"/>
+        <line x1= "60.1" y1="26" x2="48" y2="43"/>
+        <line x1= "60.1" y1="36" x2="48" y2="19"/>
+        <line x1= "60.1" y1="38" x2="48" y2="43"/>
+      </g>
+
+      <g>
+        <g id="vline">
+          <line  x1="4"  y1="10" x2="4"  y2="16" style="fill:none; stroke-width:0.2;stroke:black;"/>
+          <polyline  points="4,16 3.25,14.5 4.75,14.5" style="fill:black; stroke:none;"/>
+        </g>
+        <use href="#vline" transform="translate( 8,0)"/>
+        <use href="#vline" transform="translate(16,0)"/>
+        <use href="#vline" transform="translate(24,0)"/>
+        <use href="#vline" transform="translate(32,0)"/>
+        <use href="#vline" transform="translate(40,0)"/>
+      </g>
+
+
+      <g transform="translate(0,16)">
+        <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+        <text x="12" y="4.5">Vertex Shader</text>
+      </g>
+
+      <g style="fill:none; stroke-width:0.2;stroke:black;">
+        <g>
+          <line x1= "4" y1="22" x2="10" y2="28"/>
+          <line x1="12" y1="22" x2="12" y2="28"/>
+          <line x1="20" y1="22" x2="14" y2="28"/>
+        </g>
+      
+        <g>
+          <line x1="28" y1="22" x2="28" y2="28"/>
+        </g>
+      
+        <g>
+          <line x1="36" y1="22" x2="39.5" y2="28"/>
+          <line x1="44" y1="22" x2="40.5" y2="28"/>
+        </g>
+      
+        <g transform="translate(9,28)">
+          <rect x="0" y="0" width="6" height="6"/>
+          <polyline points="1,1 5,2 3,5 1,1" style="fill:lightgray;"/>
+        </g>
+      
+        <g transform="translate(25,28)">
+          <rect x="0" y="0" width="6" height="6"/>
+          <circle cx="3" cy="3" r="1.5" style="fill:lightgray;"/>
+        </g>
+      
+        <g transform="translate(37,28)">
+          <rect x="0" y="0" width="6" height="6"/>
+          <line x1="1" y1="4.5" x2= "5" y2="2" style="stroke-width:0.3"/>
+        </g>
+      
+        <g>
+          <line x1="10" y1="34" x2= "4" y2="40"/>
+          <line x1="11" y1="34" x2= "8" y2="40"/>
+          <line x1="12" y1="34" x2="12" y2="40"/>
+          <line x1="13" y1="34" x2="16" y2="40"/>
+          <line x1="14" y1="34" x2="20" y2="40"/>
+      
+          <line x1="28" y1="34" x2="24" y2="40"/>
+          <line x1="28" y1="34" x2="28" y2="40"/>
+          <line x1="28" y1="34" x2="32" y2="40"/>
+      
+          <line x1="39.5"  y1="34" x2="36"    y2="40"/>
+          <line x1="39.83" y1="34" x2="38.67" y2="40"/>
+          <line x1="40.17" y1="34" x2="41.33" y2="40"/>
+          <line x1="40.5"  y1="34" x2="44"    y2="40"/>
+        </g>
+      </g>
+
+      <g transform="translate(0,40)">
+        <rect x="0" y="0" width="48" height="6" style="fill:#bebada; stroke-width:0.2;stroke:black;"/>
+        <text x="6" y="4.5">Fragment Shader</text>
+      </g>
+
+      <g style="fill:none; stroke-width:0.2;stroke:black;">
+        <line x1= "4"    y1="46" x2= "4"    y2="52"/>
+        <line x1= "8"    y1="46" x2= "8"    y2="52"/>
+        <line x1="12"    y1="46" x2="12"    y2="52"/>
+        <line x1="16"    y1="46" x2="16"    y2="52"/>
+        <line x1="20"    y1="46" x2="20"    y2="52"/>
+
+        <line x1="24"    y1="46" x2="24"    y2="52"/>
+        <line x1="28"    y1="46" x2="28"    y2="52"/>
+        <line x1="32"    y1="46" x2="32"    y2="52"/>
+
+        <line x1="36"    y1="46" x2="36"    y2="52"/>
+        <line x1="38.67" y1="46" x2="38.67" y2="52"/>
+        <line x1="41.33" y1="46" x2="41.33" y2="52"/>
+        <line x1="44"    y1="46" x2="44"    y2="52"/>
+      </g>
+
+      <g transform="translate(0,52)">
+        <rect x="1" y="0" rx="3" ry="3" width="46" height="6" style="fill:#ffffb3; stroke-width:0.2;stroke:black;"/>
+        <text x="4.5" y="4.5">Screen/Framebuffer</text>
+      </g>
+    </g>
+  </svg>
+</body>
+</html>

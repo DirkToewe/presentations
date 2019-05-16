@@ -1,0 +1,122 @@
+<!--
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+  <title>Shader 1</title>
+</head>
+<body>
+  <script type="text/javascript">
+'use strict'; {
+  const link = document.createElement('a')
+  const canvas = document.createElement('canvas')
+  // (internal) resolution
+  canvas.width  = 800
+  canvas.height = 800
+  // displayed size
+  canvas.style = 'width: 800px; height 800px;'
+  document.body.appendChild(link)
+  document.body.appendChild(canvas)
+
+  const gl = canvas.getContext("webgl2",{
+    antialias: false,
+    stencil: false,
+    alpha: true
+  })
+
+  const vertexShaderString = `
+    #version 300 es
+    precision highp float;
+    precision highp int;
+    // VERTEX_SHADER
+    in vec2 in_xy;
+
+    void main() {
+      gl_Position = vec4(in_xy,0,1);
+    }
+  `;
+  const fragmentShaderString = `
+    #version 300 es
+    precision highp float;
+    precision highp int;
+    // FRAGMENT_SHADER
+    out vec4 out_color;
+
+    void main() {
+      vec4 blue = vec4(0,0,1, 1);
+      out_color = blue;
+    }
+  `;
+
+  function compileShader(code,type)
+  {
+    code = code.trim();
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, code);
+    gl.compileShader(shader);
+
+    console.info( gl.getShaderInfoLog(shader) );
+
+    const compiled = gl.getShaderParameter(shader, gl.COMPILE_STATUS);
+    if( ! compiled )
+      throw new Error('Could not compile shader.');
+
+    return shader;
+  }
+
+  const vertShader = compileShader(  vertexShaderString, gl.  VERTEX_SHADER),
+        fragShader = compileShader(fragmentShaderString, gl.FRAGMENT_SHADER);
+
+  const program = gl.createProgram();
+  gl.attachShader(program, vertShader);
+  gl.attachShader(program, fragShader);
+  gl.linkProgram(program);
+
+  gl.useProgram(program);
+
+  console.info( gl.getProgramInfoLog(program) );
+
+  const linked = gl.getProgramParameter( program, gl.LINK_STATUS);
+  if( ! linked )
+    throw new Error('Could not link program.');
+
+  const buf_xy = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf_xy);
+  gl.bufferData(gl.ARRAY_BUFFER,
+    Float32Array.of(
+      -1,-1,  +1,-1,  -1,+1, // ◣
+      +1,+1,   0,+1,   0, 0  // ◤
+    ), gl.STATIC_DRAW, 0,0
+  );
+  const loc_xy = gl.getAttribLocation(program, 'in_xy');
+  gl.enableVertexAttribArray(loc_xy);
+  gl.vertexAttribPointer(loc_xy, 2, gl.FLOAT, false, 2*4,0);
+
+  gl.drawArrays(gl.TRIANGLES, 0,6);
+
+  var sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+  gl.waitSync(sync, 0, gl.TIMEOUT_IGNORED);
+
+  link.innerHTML = 'Download Screenshot<br>'
+  link.href= canvas.toDataURL();
+  link.download = 'shader1.png';
+}
+  </script>
+</body>
+</html>

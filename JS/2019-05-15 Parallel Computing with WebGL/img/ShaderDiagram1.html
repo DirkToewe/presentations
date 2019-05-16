@@ -1,0 +1,174 @@
+<!--
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+  <title>WebGL - Sample 1</title>
+</head>
+<body>
+              <svg version="1.2" preserveAspectRatio="xMidYMid" width="90%" height="90%" viewbox="0 -1   4.5 3.375" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <polyline id="arrow" transform="scale(0.45)" points="-0.5,-0.2  -0.5,0.2  0.1,0.2  0.1,0.4  0.5,0  0.1,-0.4  0.1,-0.2 -0.5,-0.2" style="fill:none; stroke-width: 0.02; stroke: black;" />
+              </defs>
+              <use href="#arrow" transform="translate(0.25,0)"/>
+              <use href="#arrow" transform="translate(1.75,0)"/>
+              <use href="#arrow" transform="translate(3.25,0)"/>
+              <image id="svg_gpu_pipeline_img1" href="" x="0.5" y="-0.5" height="1" width="1"/>
+              <image id="svg_gpu_pipeline_img2" href="" x="2.0" y="-0.5" height="1" width="1"/>
+              <image id="svg_gpu_pipeline_img3" href="" x="3.5" y="-0.5" height="1" width="1"/>
+              <text x="0.60" y="-0.6" fill="#2a76dd" font-size="0.2" style="font-family: sans-serif;">Vertices</text>
+              <text x="2.00" y="-0.6" fill="#2a76dd" font-size="0.2" style="font-family: sans-serif;">Geometry</text>
+              <text x="3.45" y="-0.6" fill="#2a76dd" font-size="0.2" style="font-family: sans-serif;">Fragments</text>
+              <g transform="translate(0.05,0.3)" fill="#2a76dd" style="font-family: sans-serif;" font-size="0.09">
+                <g transform="translate(0,0)">
+                  <text x="0" y="0"   >Vertex</text>
+                  <text x="0" y="0.1">Shader</text>
+                </g>
+                <g transform="translate(1.5,0)" fill="dimgray">
+                  <text x="0" y="0"   text-decoration="line-through">Geometry</text>
+                  <text x="0" y="0.1" text-decoration="line-through">Shader</text>
+                </g>
+                <g transform="translate(3,0)">
+                  <text x="0" y="0"  >Fragment</text>
+                  <text x="0" y="0.1">Shader</text>
+                </g>
+              </g>
+            </svg>
+  <script type="text/javascript">
+    'use strict'; (async () => {
+      const svg_img1 = document.getElementById('svg_gpu_pipeline_img1'),
+            svg_img2 = document.getElementById('svg_gpu_pipeline_img2'),
+            svg_img3 = document.getElementById('svg_gpu_pipeline_img3')
+      const canvas = document.createElement('canvas')
+      canvas.width = canvas.height = 800;
+      canvas.style = `width: ${canvas.width}px; height ${canvas.height}px; border-style: solid; border-width: 4px; `
+      const {width:W, height:H} = canvas,
+        ctx = canvas.getContext('2d'),
+        nodes = [
+          [0.1,0.1],
+          [0.15,0.4], [0.75,0.2],
+          [0.5,0.5], [0.1,0.9], [0.9,0.9]
+        ].map( ([x,y]) => [x*W, y*H] ),
+        SIZE = Math.max(W,H) / 64
+      ctx.imageSmoothingEnabled = false;
+      ctx.lineWidth = SIZE;
+      for( const [x,y] of nodes ) {
+        ctx.beginPath();
+        ctx.moveTo(x-SIZE*2, y-SIZE*2)
+        ctx.lineTo(x+SIZE*2, y+SIZE*2)
+        ctx.moveTo(x-SIZE*2, y+SIZE*2)
+        ctx.lineTo(x+SIZE*2, y-SIZE*2)
+        ctx.stroke();
+      }
+      const lw = 8;
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = 'black';
+      ctx.strokeRect(lw/2, lw/2, W-lw, H-lw);
+      svg_img1.setAttribute('href', canvas.toDataURL() );
+      ctx.lineWidth = SIZE;
+      ctx.clearRect(0,0, W,H)
+      ctx.beginPath();
+      ctx.arc(...nodes[0], SIZE*2, 0, Math.PI*2)
+      ctx.fillStyle = 'black';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(...nodes[1])
+      ctx.lineTo(...nodes[2])
+      ctx.strokeStyle = 'black';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(...nodes[3])
+      ctx.lineTo(...nodes[4])
+      ctx.lineTo(...nodes[5])
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fillStyle = 'darkgray';
+      ctx.fill();
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = 'black';
+      ctx.strokeRect(lw/2, lw/2, W-lw, H-lw);
+      svg_img2.setAttribute('href', canvas.toDataURL() );
+      ctx.lineWidth = SIZE;
+      ctx.clearRect(0,0, W,H)
+      ctx.beginPath();
+      ctx.arc(...nodes[0], SIZE*2, 0, Math.PI*2)
+      ctx.fillStyle = 'red';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(...nodes[1])
+      ctx.lineTo(...nodes[2])
+      ctx.strokeStyle = 'blue';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(...nodes[3])
+      ctx.lineTo(...nodes[4])
+      ctx.lineTo(...nodes[5])
+      ctx.closePath();
+      ctx.fillStyle = 'green';
+      ctx.fill();
+      const grid = W/20,
+                w = W/grid,
+                h = H/grid,
+              img = ctx.getImageData(0,0, W,H),
+        imgSmall = new ImageData(w,h)
+      for( let i=0; i < h; i++ )
+      for( let j=0; j < w; j++ ) {
+        const K = (i+1)*grid,
+              L = (j+1)*grid
+        let r = 0, g = 0, b = 0, a = 0
+        for( let k=i*grid; k < K; k++ )
+        for( let l=j*grid; l < L; l++ )
+          if( img.data[(W*k+l)*4+3] ) {
+            r = img.data[(W*k+l)*4+0]
+            g = img.data[(W*k+l)*4+1]
+            b = img.data[(W*k+l)*4+2]
+            a += 1
+          }
+        if( a > 0.1*grid*grid ) {
+          imgSmall.data[(w*i+j)*4+0] = r
+          imgSmall.data[(w*i+j)*4+1] = g
+          imgSmall.data[(w*i+j)*4+2] = b
+          imgSmall.data[(w*i+j)*4+3] = 255
+        }
+      }
+      ctx.clearRect(0,0, W,H)
+      ctx.drawImage(await createImageBitmap(imgSmall), 0,0, W,H)
+      ctx.lineWidth = 2
+      ctx.strokeStyle = 'black';
+      for( let x=grid; x < W; x += grid ) {
+        ctx.beginPath();
+        ctx.moveTo(x,0)
+        ctx.lineTo(x,H)
+        ctx.stroke();
+      }
+      for( let y=grid; y < H; y += grid ) {
+        ctx.beginPath();
+        ctx.moveTo(0,y)
+        ctx.lineTo(W,y)
+        ctx.stroke();
+      }
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = 'black';
+      ctx.strokeRect(lw/2, lw/2, W-lw, H-lw);
+      svg_img3.setAttribute('href', canvas.toDataURL() );
+    })()
+  </script>
+  </script>
+</body>
+</html>

@@ -1,0 +1,312 @@
+<!--
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+  <title>Game of Life - CPU vs WebGL</title>
+
+  <script src="./game_of_simple_life_io.js"></script>
+  <script src="./game_of_simple_life_cpu.js"></script>
+  <script src="./game_of_simple_life_webgl.js"></script>
+
+  <style media="all">
+    #main {
+      width : 100%;
+      height: 98vh;
+      display: grid;
+      grid-template-rows: auto 1fr; 
+      grid-template-columns: 1fr 96px auto auto auto auto auto auto; 
+      grid-template-areas:
+        ".      time   clear  pattern select resolution dt     play"
+        "canvas canvas canvas canvas  canvas canvas     canvas canvas";
+    }
+    #main-time      { grid-area: time; }
+    #main-clear     { grid-area: clear; }
+    #main-pattern   { grid-area: pattern; }
+    #main-dt        { grid-area: dt; }
+    #main-select    { grid-area: select; }
+    #main-resolution{ grid-area: resolution; }
+    #main-play      { grid-area: play; }
+    #main-canvas    { grid-area: canvas; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="main">
+    <span   id="main-time"></span>
+
+    <button id="main-clear">Clear</button>
+
+    <select id="main-pattern">
+      <option value="<toggle>">&lt;Toggle Cell&gt;</option>
+    </select>
+
+    <select id="main-select">
+      <option value="cpu">CPU</option>
+      <option value="webgl">WebGL</option>
+    </select>
+
+    <select id="main-resolution">
+    </select>
+
+    <select id="main-dt">
+    </select>
+
+    <button id="main-play">▶</button>
+
+    <canvas id="main-canvas">
+  </div>
+  <script type="text/javascript">
+'use strict';
+(async () => {
+  const   main = document.getElementById('main'),
+          time = document.getElementById('main-time'),
+         clear = document.getElementById('main-clear'),
+       pattern = document.getElementById('main-pattern'),
+            dt = document.getElementById('main-dt'),
+        select = document.getElementById('main-select'),
+    resolution = document.getElementById('main-resolution'),
+     startStop = document.getElementById('main-play'),
+        canvas = document.getElementById('main-canvas')
+  canvas.width = canvas.offsetWidth
+  canvas.height= canvas.offsetHeight
+  const context2d = canvas.getContext('2d')
+
+  for( let size=32; size <= 4*1024; size*=2 )
+  {
+    const opt = document.createElement('option')
+    opt.value = `[${size},${size}]`
+    opt.innerHTML = `${size}x${size}`
+    resolution.appendChild(opt)
+  }
+  resolution.selectedIndex = 0
+
+  for( const p of PATTERNS )
+  {
+    const opt = document.createElement('option')
+    opt.value = JSON.stringify(p.cells)
+    opt.innerHTML = p.name
+    pattern.appendChild(opt)
+  }
+
+  for( const t of [4, 8, 16, 32, 64, 128, 256, 512, 1024] )
+  {
+    const opt = document.createElement('option')
+    opt.value = t
+    opt.innerHTML = `${t} ms`
+    dt.appendChild(opt)
+  }
+  dt.selectedIndex = 2
+
+  let game, x0=16, y0=16, scale = 1
+
+  const zoomIn  = () => scale = scale > 1 ? scale+1 : scale*2,
+        zoomOut = () => scale = scale > 1 ? scale-1 : scale/2
+
+  let      redrawing = false
+  let      redrawRequest = false
+  function redraw()
+  {
+    redrawRequest = true
+    if( ! redrawing )
+    {
+      redrawing = true;
+      (async () => {
+        const lw = context2d.lineWidth = 4
+        context2d.imageSmoothingEnabled = false
+
+        do {
+          context2d.clearRect(0,0, canvas.width,canvas.height)
+          redrawRequest = false
+          await game.render(context2d, x0,y0, scale)
+        } while(redrawRequest)
+
+        time.innerHTML = `time: ${game.time || 0}`
+        const { width: W, height: H } = game
+
+        context2d.strokeStyle = '#0000FFFF'
+        context2d.strokeRect(
+          x0-lw/2,
+          y0-lw/2,
+          lw + scale*W,
+          lw + scale*H
+        )
+     
+        if( scale > 7 )
+        {
+          context2d.strokeStyle = 'lightgray'
+          context2d.lineWidth = 1
+     
+          for( let i=1; i < H; i++ )
+          {
+            context2d.beginPath()
+            context2d.moveTo(x0,        y0+i*scale)
+            context2d.lineTo(x0+W*scale,y0+i*scale)
+            context2d.stroke()
+          }
+     
+          for( let i=1; i < W; i++ )
+          {
+            context2d.beginPath()
+            context2d.moveTo(x0+i*scale,y0        )
+            context2d.lineTo(x0+i*scale,y0+H*scale)
+            context2d.stroke()
+          }
+        }
+
+        console.assert( ! redrawRequest )
+        redrawing = false
+      })()
+    }
+  }
+
+  window.onresize = async () => {
+    canvas.width = canvas.offsetWidth
+    canvas.height= canvas.offsetHeight
+    redraw()
+  }
+
+  // SIMULATION START AND STOP FUNCTIONS
+  const timeout = dt => new Promise( resolve => setTimeout(resolve,dt) )
+  let stop = async () => {}
+
+  startStop.onclick = function start()
+  {
+    let loop = true;
+
+    const stopPromise = (async () => {
+      let t0 = performance.now()
+      while(loop) {
+        await timeout( dt.value - performance.now() + t0 )
+        t0 = performance.now()
+        await game.update()
+        redraw()
+      }
+      startStop.innerHTML = '▶'
+      startStop.onclick = start
+      stop = async () => {}
+    })()
+
+    startStop.innerHTML = '▮▮'
+    startStop.onclick = stop = async () => {
+      loop = false;
+      await stopPromise;
+    }
+  }
+
+  // ADD RIGHT-CLICK CELL MANIPULATION
+  canvas.addEventListener('contextmenu', evt => {
+    const rect = canvas.getBoundingClientRect(),
+          x = Math.trunc( (evt.clientX - rect.left - x0) / scale ),
+          y = Math.trunc( (evt.clientY - rect.top  - y0) / scale );
+    (async () => {
+      if( pattern.value === '<toggle>' )
+        await game.toggleCell(x,y)
+      else {
+        const cells = JSON.parse(pattern.value)
+        for( const [row,col] of cells )
+          await game.setCell(x+col,y+row, 1)
+      }
+      redraw()
+    })()
+    evt.preventDefault()
+    return false
+  }, false);
+
+  // ADD MOUSE DRAG MOVE CONTROL
+  let mx = undefined,
+      my = undefined
+
+  canvas.onmousedown = evt => {
+    if( evt.button === 0 ) {
+      mx = evt.clientX
+      my = evt.clientY
+    }
+  }
+  canvas.onmousemove = ({ clientX: x, clientY: y }) => {
+    if( undefined != mx ) {
+      console.assert( undefined != my )
+      x0 += x - mx; mx = x
+      y0 += y - my; my = y
+      redraw()
+    }
+  }
+  canvas.onmouseup = evt => {
+    if( evt.button === 0 )
+      mx = my = undefined
+  }
+
+  // ADD MOUSE-WHEEL ZOOM CONTROL
+  canvas.addEventListener('wheel', evt => {
+    const {left, top} = canvas.getBoundingClientRect(),
+           s = scale
+    let {deltaY: dY, clientX: x, clientY: y} = evt
+    x -= left
+    y -= top
+
+    if( dY < 0 ) zoomIn ()
+    else {
+      const [w,h] = JSON.parse(resolution.value)
+      if( w*scale*4/3 > canvas.width || h*scale*4/3 > canvas.height )
+        zoomOut()
+    }
+    scale = Math.max(scale,1/128)
+    x0 = Math.round( x - (x-x0)*scale/s ) 
+    y0 = Math.round( y - (y-y0)*scale/s )
+    redraw()
+
+    evt.preventDefault()
+    return false
+  }, false);
+
+  // KILL ALL CELLS ("Burn them all!" - Aerys II Targaryen)
+  clear.onclick = async () => {
+    await stop()
+    const [w,h] = JSON.parse(resolution.value)
+    switch( select.value )
+    {
+      case 'cpu'  : game = new GameOfLifeCPU  (w,h); break;
+      case 'webgl': game = new GameOfLifeWebGL(w,h); break;
+      default: throw new Error('???');
+    }
+    redraw()
+  }
+
+  // SWITCHING OF BOARD RESOLUTION
+  const resize = async () => {
+    await stop()
+    const [w,h] = JSON.parse(resolution.value)
+    x0 = y0 = 16
+    while( w*scale    <= canvas.width && h*scale    <= canvas.height ) zoomIn ()
+    while( w*scale*8/7 > canvas.width || h*scale*8/7 > canvas.height ) zoomOut()
+    scale = Math.max(scale,1)
+    switch( select.value )
+    {
+      case 'cpu'  : game = new GameOfLifeCPU  (w,h); break;
+      case 'webgl': game = new GameOfLifeWebGL(w,h); break;
+      default: throw new Error('???');
+    }
+    redraw()
+  }
+  await resize()
+  select    .onchange = clear.onclick
+  resolution.onchange = resize
+})()
+  </script>
+</body>
+</html>
